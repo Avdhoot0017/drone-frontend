@@ -698,7 +698,7 @@ export default function DashboardPage() {
       {/* ============ KPI CARDS ============ */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <KpiCard
-          title="Total Observations"
+          title="Total Violations"
           value={formatNumber(stats?.totalObservations || 0)}
           subtitle={`${stats?.todayObservations || 0} today`}
           icon={<Eye className="h-4 w-4" />}
@@ -758,7 +758,7 @@ export default function DashboardPage() {
               <BarChart3 className="h-5 w-5 text-primary" />
               <CardTitle className="text-base">District Wise Comparison</CardTitle>
             </div>
-            <CardDescription>Total observations per district</CardDescription>
+            <CardDescription>Total violations per district</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 pb-4">
             {regionsLoading ? (
@@ -891,9 +891,9 @@ export default function DashboardPage() {
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <Anchor className="h-5 w-5 text-primary" />
-              <CardTitle className="text-base">Vessel Types</CardTitle>
+              <CardTitle className="text-base">Offence Type</CardTitle>
             </div>
-            <CardDescription>Distribution of vessels by type</CardDescription>
+            <CardDescription>Distribution by offence type</CardDescription>
           </CardHeader>
           <CardContent>
             {vesselTypesLoading ? (
@@ -919,7 +919,7 @@ export default function DashboardPage() {
                       axisLine={false}
                       tickLine={false}
                     >
-                      <Label value="Types" angle={-90} position="insideLeft" offset={-5} style={{ fontSize: 12, fill: '#6b7280', fontWeight: 500, textAnchor: 'middle' }} />
+                      <Label value="Offence" angle={-90} position="insideLeft" offset={-5} style={{ fontSize: 12, fill: '#6b7280', fontWeight: 500, textAnchor: 'middle' }} />
                     </YAxis>
                     <Tooltip content={<CustomTooltip />} />
                     <Bar dataKey="count" fill={COLORS.info} radius={[0, 6, 6, 0]} name="Count" barSize={20} />
@@ -984,14 +984,14 @@ export default function DashboardPage() {
         <SectionHeader
           icon={TrendingUp}
           title="Trends & Patterns"
-          description="Observation trends over time"
+          description="Violation trends over time"
         />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Daily Trends */}
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Daily Observations</CardTitle>
+                <CardTitle className="text-base">Daily Violations</CardTitle>
                 <Select value={trendDays.toString()} onValueChange={(v) => setTrendDays(parseInt(v))}>
                   <SelectTrigger className="w-[110px] h-8">
                     <SelectValue />
@@ -1027,7 +1027,7 @@ export default function DashboardPage() {
                         stroke={COLORS.primary}
                         fillOpacity={1}
                         fill="url(#colorObs)"
-                        name="Observations"
+                        name="Violations"
                       />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -1059,7 +1059,7 @@ export default function DashboardPage() {
                         stroke={COLORS.primary}
                         strokeWidth={2}
                         dot={{ r: 4 }}
-                        name="Observations"
+                        name="Violations"
                       />
                       <Line
                         type="monotone"
@@ -1081,7 +1081,7 @@ export default function DashboardPage() {
       <Separator />
 
       {/* ============ ACTIVITY ANALYSIS ============ */}
-      <section>
+      {/* <section>
         <SectionHeader
           icon={Activity}
           title="Surveillance Network"
@@ -1137,7 +1137,7 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
-      </section>
+      </section> */}
 
       <Separator />
 
@@ -1214,9 +1214,9 @@ export default function DashboardPage() {
                 <div className="max-h-[220px] overflow-y-auto px-6 py-3 space-y-3">
                   {districtData.map((district, idx) => {
                     const total = district.observations;
-                    const nearShore = Math.round(total * (0.3 + (idx * 0.05)));
-                    const midZone = Math.round(total * (0.4 - (idx * 0.03)));
-                    const offshore = total - nearShore - midZone;
+                    const nearShoreRatio = 0.4 + (idx * 0.05);
+                    const nearShore = Math.round(total * nearShoreRatio);
+                    const midZone = total - nearShore;
 
                     return (
                       <div
@@ -1250,13 +1250,6 @@ export default function DashboardPage() {
                           >
                             {midZone > total * 0.15 && midZone}
                           </div>
-                          <div
-                            className="h-full flex items-center justify-center text-[10px] font-medium text-white"
-                            style={{ width: `${(offshore / total) * 100}%`, backgroundColor: '#6366f1', minWidth: '18px' }}
-                            title={`12 NM: ${offshore}`}
-                          >
-                            {offshore > total * 0.15 && offshore}
-                          </div>
                         </div>
                       </div>
                     );
@@ -1273,10 +1266,6 @@ export default function DashboardPage() {
                   <div className="w-3 h-3 rounded" style={{ backgroundColor: '#3b82f6' }} />
                   <span className="text-xs text-muted-foreground">5-12 NM</span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#6366f1' }} />
-                  <span className="text-xs text-muted-foreground">12 NM</span>
-                </div>
               </div>
             </CardContent>
           </Card>
@@ -1289,8 +1278,8 @@ export default function DashboardPage() {
       <section>
         <SectionHeader
           icon={MapPin}
-          title="District-wise Violation Distribution"
-          description="Violation distribution for each of the 5 coastal districts"
+          title="Total Violation Distribution"
+          description="Overall violation distribution across all districts"
         />
 
         {/* Global Legend */}
@@ -1311,7 +1300,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-4 h-4 rounded-full bg-red-600" />
                 <span className="text-lg font-bold text-gray-800">Total - All Districts</span>
-                <Badge className="bg-red-100 text-red-700 border-0">{stats?.totalObservations || 0} Observations</Badge>
+                <Badge className="bg-red-100 text-red-700 border-0">{stats?.totalObservations || 0} Violations</Badge>
               </div>
               <div className="flex flex-col lg:flex-row items-center gap-8">
                 {/* Large Pie Chart */}
@@ -1372,6 +1361,13 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* District Wise Violation Section */}
+        <SectionHeader
+          icon={MapPin}
+          title="District Wise Violation"
+          description="Violation distribution for each of the 5 coastal districts"
+        />
 
         {/* District Pie Charts Grid - 2 per row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -1504,37 +1500,39 @@ export default function DashboardPage() {
         </>
       )}
 
-      {/* ============ FOOTER STATS ============ */}
-      <Card className="bg-gradient-to-r from-primary/5 to-primary/10">
-        <CardContent className="py-5">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 text-center">
-            <div>
-              <p className="text-2xl font-bold">{districtData.length}</p>
-              <p className="text-xs text-muted-foreground">Districts</p>
+      {/* ============ FOOTER STATS (Admin Only) ============ */}
+      {isAdmin && (
+        <Card className="bg-gradient-to-r from-primary/5 to-primary/10">
+          <CardContent className="py-5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold">{districtData.length}</p>
+                <p className="text-xs text-muted-foreground">Districts</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{flyingLocations.length}</p>
+                <p className="text-xs text-muted-foreground">Flying Locations</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{violationData.length}</p>
+                <p className="text-xs text-muted-foreground">Violation Types</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{vesselTypeData.length}</p>
+                <p className="text-xs text-muted-foreground">Vessel Types</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-yellow-600">{formatNumber(totalPending)}</p>
+                <p className="text-xs text-muted-foreground">Pending Cases</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-green-600">{formatNumber(totalDisposed)}</p>
+                <p className="text-xs text-muted-foreground">Disposed Cases</p>
+              </div>
             </div>
-            <div>
-              <p className="text-2xl font-bold">{flyingLocations.length}</p>
-              <p className="text-xs text-muted-foreground">Flying Locations</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{violationData.length}</p>
-              <p className="text-xs text-muted-foreground">Violation Types</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{vesselTypeData.length}</p>
-              <p className="text-xs text-muted-foreground">Vessel Types</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-yellow-600">{formatNumber(totalPending)}</p>
-              <p className="text-xs text-muted-foreground">Pending Cases</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-green-600">{formatNumber(totalDisposed)}</p>
-              <p className="text-xs text-muted-foreground">Disposed Cases</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

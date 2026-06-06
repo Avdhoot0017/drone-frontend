@@ -178,7 +178,8 @@ export default function SettingsPage() {
 
         {/* Settings Cards */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Change Password */}
+          {/* Change Password - Admin Only */}
+          {user?.role === 'admin' && (
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2">
@@ -291,6 +292,7 @@ export default function SettingsPage() {
               </form>
             </CardContent>
           </Card>
+          )}
 
           {/* Notifications */}
           <Card>
