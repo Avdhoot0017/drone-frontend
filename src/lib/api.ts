@@ -137,7 +137,7 @@ export const dashboardApi = {
 // Sync APIs
 export const syncApi = {
   runSync: () =>
-    api.post<ApiResponse<SyncResult>>('/sync/run'),
+    api.post<ApiResponse<SyncResult>>('/sync/run', {}, { timeout: 120000 }),
 
   getStatus: () =>
     api.get<ApiResponse<SyncStatus>>('/sync/status'),
