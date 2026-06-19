@@ -48,8 +48,27 @@ export const useAuthStore = create<AuthState>()(
 
           return true;
         } catch (error: unknown) {
-          const err = error as { response?: { data?: { error?: string } } };
-          const errorMessage = err.response?.data?.error || 'Login failed';
+          const err = error as { response?: { data?: { error?: string }; status?: number } };
+          const rawError = err.response?.data?.error || '';
+          const status = err.response?.status;
+
+          // Map technical errors to user-friendly messages
+          let errorMessage = 'Login failed. Please try again.';
+
+          if (status === 401 || rawError.toLowerCase().includes('invalid') || rawError.toLowerCase().includes('incorrect')) {
+            errorMessage = 'Invalid User ID or Password';
+          } else if (status === 404 || rawError.toLowerCase().includes('not found') || rawError.toLowerCase().includes('no user')) {
+            errorMessage = 'User not found. Please check your User ID.';
+          } else if (status === 403 || rawError.toLowerCase().includes('disabled') || rawError.toLowerCase().includes('inactive')) {
+            errorMessage = 'Your account is disabled. Please contact administrator.';
+          } else if (status === 429) {
+            errorMessage = 'Too many login attempts. Please try again later.';
+          } else if (rawError.toLowerCase().includes('network') || rawError.toLowerCase().includes('connect')) {
+            errorMessage = 'Unable to connect to server. Please check your internet connection.';
+          } else if (status === 500) {
+            errorMessage = 'Server error. Please try again later.';
+          }
+
           set({
             isLoading: false,
             error: errorMessage,

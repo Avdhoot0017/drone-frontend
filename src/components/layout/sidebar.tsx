@@ -15,6 +15,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  FileText,
+  Plus,
+  ClipboardList,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -37,13 +40,15 @@ interface NavItem {
   title: string;
   href: string;
   icon: React.ElementType;
-  adminOnly?: boolean;
+  roles?: ('admin' | 'member' | 'operator' | 'acf' | 'commissioner')[];
 }
 
 const navItems: NavItem[] = [
   { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { title: 'Users', href: '/dashboard/users', icon: Users, adminOnly: true },
-  { title: 'Sync Status', href: '/dashboard/sync', icon: RefreshCw, adminOnly: true },
+  { title: 'Cases', href: '/dashboard/cases', icon: ClipboardList, roles: ['admin', 'operator', 'acf', 'commissioner'] },
+  { title: 'New Case', href: '/dashboard/cases/new', icon: Plus, roles: ['admin', 'operator'] },
+  { title: 'Users', href: '/dashboard/users', icon: Users, roles: ['admin'] },
+  { title: 'Sync Status', href: '/dashboard/sync', icon: RefreshCw },
   { title: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
 
@@ -64,7 +69,7 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
   };
 
   const filteredNavItems = navItems.filter(
-    (item) => !item.adminOnly || user?.role === 'admin'
+    (item) => !item.roles || (user?.role && item.roles.includes(user.role))
   );
 
   const getInitials = (name: string) => {
@@ -85,16 +90,25 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
     >
       <div className="flex flex-col h-full">
         {/* Header */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-border">
-          <Link href="/dashboard" className="flex items-center">
+        <div className={cn(
+          "flex items-center justify-between px-3 border-b border-border",
+          isCollapsed ? "h-16 py-2" : "h-20 py-3"
+        )}>
+          <Link href="/dashboard" className="flex items-center gap-2">
             <Image
-              src="/icon-schnell.jpg"
-              alt="Schnell Logo"
-              width={isCollapsed ? 40 : 140}
-              height={isCollapsed ? 40 : 50}
-              className="object-contain"
+              src="/logo.png"
+              alt="Fisheries Department Logo"
+              width={isCollapsed ? 44 : 48}
+              height={isCollapsed ? 44 : 48}
+              className="object-contain rounded-lg flex-shrink-0"
               priority
             />
+            {!isCollapsed && (
+              <div className="flex flex-col leading-tight">
+                <span className="text-sm font-semibold text-gray-800">Department of Fisheries</span>
+                <span className="text-xs text-gray-500">Government of Maharashtra</span>
+              </div>
+            )}
           </Link>
           <Button
             variant="ghost"
@@ -114,8 +128,17 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto py-4 px-3">
           <ul className="space-y-1">
             {filteredNavItems.map((item) => {
-              const isActive = pathname === item.href ||
-                (item.href !== '/dashboard' && pathname.startsWith(item.href));
+              // Check if this is the active route
+              // Exact match OR starts with href but no other nav item is a better match
+              const isExactMatch = pathname === item.href;
+              const isChildRoute = item.href !== '/dashboard' && pathname.startsWith(item.href + '/');
+              // Don't highlight parent if a more specific nav item matches
+              const hasMoreSpecificMatch = filteredNavItems.some(
+                (other) => other.href !== item.href &&
+                           other.href.startsWith(item.href) &&
+                           (pathname === other.href || pathname.startsWith(other.href + '/'))
+              );
+              const isActive = isExactMatch || (isChildRoute && !hasMoreSpecificMatch);
 
               return (
                 <li key={item.href}>
@@ -183,7 +206,9 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
                   <>
                     <div className="flex-1 text-left overflow-hidden">
                       <p className="text-sm font-medium truncate">{user?.fullName}</p>
-                      <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
+                      <p className="text-xs text-muted-foreground capitalize">
+                      {user?.role === 'acf' ? 'ACF' : user?.role}
+                    </p>
                     </div>
                     <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </>

@@ -130,15 +130,15 @@ export default function LoginPage() {
           {/* Logo and branding centered above login form */}
           <div className="flex flex-col items-center mb-6">
             <Image
-              src="/icon-schnell.jpg"
-              alt="Schnell Logo"
-              width={120}
-              height={45}
-              className="object-contain"
+              src="/logo.png"
+              alt="मत्स्यव्यवसाय विभाग - Fisheries Department"
+              width={100}
+              height={100}
+              className="object-contain rounded-full"
               priority
             />
-            <h1 className="text-xl font-bold text-gray-800 mt-3">Schnell Drone</h1>
-            <p className="text-gray-500 text-sm mt-1">Surveillance & Monitoring System</p>
+            <h1 className="text-xl font-bold text-gray-800 mt-3">मत्स्यव्यवसाय विभाग</h1>
+            <p className="text-gray-500 text-sm mt-1">महाराष्ट्र शासन - Drone Surveillance System</p>
           </div>
 
           {/* Login Box */}

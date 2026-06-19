@@ -4,7 +4,7 @@
  * Settings Page - User profile and preferences
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Lock,
   Bell,
@@ -18,6 +18,11 @@ import {
   MapPin,
   Calendar,
   Clock,
+  IndianRupee,
+  Loader2,
+  Save,
+  Plus,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,10 +31,34 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useAuthStore } from '@/stores/auth.store';
-import { authApi } from '@/lib/api';
+import { authApi, caseApi, PenaltyConfig, ViolationType } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 export default function SettingsPage() {
   const { user, fetchProfile } = useAuthStore();
@@ -45,6 +74,158 @@ export default function SettingsPage() {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+
+  // Penalty configuration state
+  const [penaltyConfigs, setPenaltyConfigs] = useState<PenaltyConfig[]>([]);
+  const [loadingPenalties, setLoadingPenalties] = useState(false);
+  const [editingPenalty, setEditingPenalty] = useState<string | null>(null);
+  const [penaltyEdits, setPenaltyEdits] = useState<Record<string, { baseAmount: number; penaltyAmount: number }>>({});
+  const [savingPenalty, setSavingPenalty] = useState<string | null>(null);
+
+  // Add new penalty state
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [violationTypes, setViolationTypes] = useState<ViolationType[]>([]);
+  const [newPenaltyForm, setNewPenaltyForm] = useState({
+    violationTypeId: '',
+    occurrence: 1,
+    baseAmount: 20000,
+    penaltyAmount: 100000,
+  });
+  const [creatingPenalty, setCreatingPenalty] = useState(false);
+
+  // Fetch penalty configurations for admin
+  useEffect(() => {
+    const fetchPenaltyConfigs = async () => {
+      if (user?.role !== 'admin') return;
+
+      try {
+        setLoadingPenalties(true);
+        const response = await caseApi.getPenaltyConfigs();
+        if (response.data.success && response.data.data) {
+          setPenaltyConfigs(response.data.data);
+        }
+      } catch (err) {
+        console.error('Error fetching penalty configs:', err);
+        toast.error('Failed to load penalty configurations');
+      } finally {
+        setLoadingPenalties(false);
+      }
+    };
+
+    fetchPenaltyConfigs();
+  }, [user?.role]);
+
+  // Handle penalty edit
+  const handleEditPenalty = (config: PenaltyConfig) => {
+    setEditingPenalty(config.id);
+    setPenaltyEdits({
+      ...penaltyEdits,
+      [config.id]: {
+        baseAmount: config.baseAmount,
+        penaltyAmount: config.penaltyAmount,
+      },
+    });
+  };
+
+  // Handle save penalty
+  const handleSavePenalty = async (configId: string) => {
+    const edits = penaltyEdits[configId];
+    if (!edits) return;
+
+    try {
+      setSavingPenalty(configId);
+      const response = await caseApi.updatePenaltyConfig(configId, edits);
+      if (response.data.success && response.data.data) {
+        setPenaltyConfigs(penaltyConfigs.map(c =>
+          c.id === configId ? response.data.data! : c
+        ));
+        toast.success('Penalty configuration updated successfully');
+        setEditingPenalty(null);
+      }
+    } catch (err) {
+      console.error('Error updating penalty config:', err);
+      toast.error('Failed to update penalty configuration');
+    } finally {
+      setSavingPenalty(null);
+    }
+  };
+
+  // Cancel editing
+  const handleCancelEdit = () => {
+    setEditingPenalty(null);
+  };
+
+  // Fetch violation types for add penalty dialog
+  useEffect(() => {
+    const fetchViolationTypes = async () => {
+      if (user?.role !== 'admin') return;
+
+      try {
+        const response = await caseApi.getViolationTypes();
+        if (response.data.success && response.data.data) {
+          setViolationTypes(response.data.data);
+        }
+      } catch (err) {
+        console.error('Error fetching violation types:', err);
+      }
+    };
+
+    fetchViolationTypes();
+  }, [user?.role]);
+
+  // Handle create new penalty config
+  const handleCreatePenalty = async () => {
+    if (!newPenaltyForm.violationTypeId) {
+      toast.error('Please select a violation type');
+      return;
+    }
+
+    // Check locally if duplicate exists
+    const selectedViolationType = violationTypes.find(v => v.id === newPenaltyForm.violationTypeId);
+    const existingConfig = penaltyConfigs.find(
+      c => c.violationType.id === newPenaltyForm.violationTypeId && c.occurrence === newPenaltyForm.occurrence
+    );
+
+    if (existingConfig) {
+      toast.error(
+        `Penalty configuration already exists for "${selectedViolationType?.name || 'this violation type'}" with ${getOrdinal(newPenaltyForm.occurrence)} offence. Please edit the existing entry instead.`,
+        { duration: 5000 }
+      );
+      return;
+    }
+
+    try {
+      setCreatingPenalty(true);
+      const response = await caseApi.createPenaltyConfig(newPenaltyForm);
+      if (response.data.success && response.data.data) {
+        setPenaltyConfigs([...penaltyConfigs, response.data.data]);
+        toast.success('Penalty configuration created successfully');
+        setShowAddDialog(false);
+        setNewPenaltyForm({
+          violationTypeId: '',
+          occurrence: 1,
+          baseAmount: 20000,
+          penaltyAmount: 100000,
+        });
+      }
+    } catch (err: unknown) {
+      console.error('Error creating penalty config:', err);
+      const error = err as { response?: { data?: { error?: string } } };
+      const errorMessage = error.response?.data?.error || 'Failed to create penalty configuration';
+
+      // Show user-friendly message for duplicate error
+      if (errorMessage.includes('already exists')) {
+        toast.error(
+          `This penalty configuration already exists. Please edit the existing entry instead.`,
+          { duration: 5000 }
+        );
+      } else {
+        toast.error(errorMessage);
+      }
+    } finally {
+      setCreatingPenalty(false);
+    }
+  };
 
   const handlePasswordChange = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -377,8 +558,275 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+
         </div>
       </div>
+
+      {/* Penalty Configuration - Admin Only - Full Width */}
+      {user?.role === 'admin' && (
+        <Card className="mt-6">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <IndianRupee className="h-5 w-5 text-amber-600" />
+                <div>
+                  <CardTitle className="text-lg">Penalty Configuration</CardTitle>
+                  <CardDescription>
+                    Configure penalty amounts for violation types and occurrences
+                  </CardDescription>
+                </div>
+              </div>
+              <Button
+                onClick={() => setShowAddDialog(true)}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add New Penalty
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loadingPenalties ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : penaltyConfigs.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-sm text-muted-foreground mb-4">
+                  No penalty configurations found.
+                </p>
+                <Button
+                  onClick={() => setShowAddDialog(true)}
+                  variant="outline"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add First Penalty Configuration
+                </Button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Violation Type</TableHead>
+                      <TableHead className="text-center">Occurrence</TableHead>
+                      <TableHead className="text-right">Base Amount (Rs.)</TableHead>
+                      <TableHead className="text-right">Violation Penalty (Rs.)</TableHead>
+                      <TableHead className="text-right">Total (Rs.)</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {penaltyConfigs.map((config) => {
+                      const isEditing = editingPenalty === config.id;
+                      const edits = penaltyEdits[config.id] || { baseAmount: config.baseAmount, penaltyAmount: config.penaltyAmount };
+                      const total = Number(edits.baseAmount || 0) + Number(edits.penaltyAmount || 0);
+
+                      return (
+                        <TableRow key={config.id}>
+                          <TableCell className="font-medium">
+                            {config.violationType.name}
+                            <span className="text-xs text-muted-foreground ml-2">
+                              ({config.violationType.code})
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="outline">
+                              {getOrdinal(config.occurrence)} offence
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {isEditing ? (
+                              <Input
+                                type="number"
+                                value={edits.baseAmount}
+                                onChange={(e) => {
+                                  const value = e.target.value === '' ? 0 : Number(e.target.value);
+                                  setPenaltyEdits({
+                                    ...penaltyEdits,
+                                    [config.id]: { ...edits, baseAmount: isNaN(value) ? 0 : value },
+                                  });
+                                }}
+                                className="w-32 text-right ml-auto"
+                              />
+                            ) : (
+                              config.baseAmount.toLocaleString('en-IN')
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {isEditing ? (
+                              <Input
+                                type="number"
+                                value={edits.penaltyAmount}
+                                onChange={(e) => {
+                                  const value = e.target.value === '' ? 0 : Number(e.target.value);
+                                  setPenaltyEdits({
+                                    ...penaltyEdits,
+                                    [config.id]: { ...edits, penaltyAmount: isNaN(value) ? 0 : value },
+                                  });
+                                }}
+                                className="w-32 text-right ml-auto"
+                              />
+                            ) : (
+                              config.penaltyAmount.toLocaleString('en-IN')
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-medium text-primary">
+                            {total.toLocaleString('en-IN')}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {isEditing ? (
+                              <div className="flex gap-2 justify-end">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={handleCancelEdit}
+                                  disabled={savingPenalty === config.id}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleSavePenalty(config.id)}
+                                  disabled={savingPenalty === config.id}
+                                  className="bg-green-600 hover:bg-green-700 text-white"
+                                >
+                                  {savingPenalty === config.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Save className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEditPenalty(config)}
+                              >
+                                <Pencil className="h-4 w-4 mr-1" />
+                                Edit
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Add Penalty Dialog */}
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent className="sm:max-w-[500px]" style={{ backgroundColor: '#ffffff' }}>
+          <DialogHeader>
+            <DialogTitle>Add New Penalty Configuration</DialogTitle>
+            <DialogDescription>
+              Create a new penalty configuration for a violation type and occurrence.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="violationType">Violation Type *</Label>
+              <Select
+                value={newPenaltyForm.violationTypeId}
+                onValueChange={(value) =>
+                  setNewPenaltyForm({ ...newPenaltyForm, violationTypeId: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select violation type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {violationTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.id}>
+                      {type.name} ({type.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="occurrence">Offence Occurrence *</Label>
+              <Input
+                id="occurrence"
+                type="number"
+                min={1}
+                value={newPenaltyForm.occurrence}
+                onChange={(e) =>
+                  setNewPenaltyForm({ ...newPenaltyForm, occurrence: parseInt(e.target.value) || 1 })
+                }
+                placeholder="1, 2, 3..."
+              />
+              <p className="text-xs text-muted-foreground">
+                {getOrdinal(newPenaltyForm.occurrence)} offence
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="baseAmount">Base Amount (Rs.) *</Label>
+                <Input
+                  id="baseAmount"
+                  type="number"
+                  value={newPenaltyForm.baseAmount}
+                  onChange={(e) => {
+                    const value = e.target.value === '' ? 0 : Number(e.target.value);
+                    setNewPenaltyForm({ ...newPenaltyForm, baseAmount: isNaN(value) ? 0 : value });
+                  }}
+                  placeholder="20000"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="penaltyAmount">Violation Penalty (Rs.) *</Label>
+                <Input
+                  id="penaltyAmount"
+                  type="number"
+                  value={newPenaltyForm.penaltyAmount}
+                  onChange={(e) => {
+                    const value = e.target.value === '' ? 0 : Number(e.target.value);
+                    setNewPenaltyForm({ ...newPenaltyForm, penaltyAmount: isNaN(value) ? 0 : value });
+                  }}
+                  placeholder="100000"
+                />
+              </div>
+            </div>
+            <Separator />
+            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+              <span className="font-medium">Total Penalty</span>
+              <span className="text-xl font-bold text-primary">
+                Rs. {(Number(newPenaltyForm.baseAmount || 0) + Number(newPenaltyForm.penaltyAmount || 0)).toLocaleString('en-IN')}
+              </span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreatePenalty}
+              disabled={creatingPenalty || !newPenaltyForm.violationTypeId}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {creatingPenalty ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4 mr-2" />
+              )}
+              Create Penalty
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+function getOrdinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }

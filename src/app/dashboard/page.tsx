@@ -23,10 +23,13 @@ import {
   Ruler,
   Download,
   Loader2,
+  FileDown,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { exportDashboardToExcel } from '@/lib/excel-export';
+import { exportDashboardToPdf } from '@/lib/pdf-export';
 import { toast } from 'sonner';
+import { ComingSoon } from '@/components/ui/coming-soon';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -57,6 +60,7 @@ import {
   useTopOffenders,
   useHeatmapData,
   useDistanceAnalysis,
+  useDistanceByDistrict,
   useSyncInfo,
   useFilterOptions,
 } from '@/hooks/use-dashboard';
@@ -311,45 +315,56 @@ function DistrictPieChart({
 
         {/* Pie Chart */}
         {hasData && filteredData.length > 0 ? (
-          <div className="relative w-36 h-36 mx-auto mb-4 transition-all duration-300">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={filteredData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={42}
-                  outerRadius={65}
-                  paddingAngle={2}
-                  dataKey="value"
-                >
-                  {filteredData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value, _, props) => [
-                    `${formatNumber(Number(value) || 0)} cases`,
-                    props.payload?.name || ''
-                  ]}
-                  contentStyle={{
-                    fontSize: '12px',
-                    borderRadius: '8px',
-                    backgroundColor: 'hsl(var(--popover))',
-                    border: '1px solid hsl(var(--border))',
-                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            {/* Center Label */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center transition-all duration-300">
-                <p className="text-xl font-bold">{filteredTotal}</p>
-                <p className="text-[10px] text-muted-foreground">{getFilterLabel()}</p>
+          <>
+            <div className="relative w-36 h-36 mx-auto mb-3 transition-all duration-300">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={filteredData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={42}
+                    outerRadius={65}
+                    paddingAngle={2}
+                    dataKey="value"
+                  >
+                    {filteredData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value, _, props) => [
+                      `${formatNumber(Number(value) || 0)} cases`,
+                      props.payload?.name || ''
+                    ]}
+                    contentStyle={{
+                      fontSize: '12px',
+                      borderRadius: '8px',
+                      backgroundColor: 'hsl(var(--popover))',
+                      border: '1px solid hsl(var(--border))',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              {/* Center Label */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center transition-all duration-300">
+                  <p className="text-xl font-bold">{filteredTotal}</p>
+                  <p className="text-[10px] text-muted-foreground">{getFilterLabel()}</p>
+                </div>
               </div>
             </div>
-          </div>
+            {/* Legend */}
+            <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 mb-3">
+              {filteredData.map((item) => (
+                <div key={item.name} className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
+                  <span className="text-[10px] text-muted-foreground">{item.name}</span>
+                </div>
+              ))}
+            </div>
+          </>
         ) : (
           <div className="h-36 flex flex-col items-center justify-center text-center px-4">
             <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-2">
@@ -457,6 +472,958 @@ function ActivityHeatmap({ data, isLoading }: { data: number[][]; isLoading?: bo
   );
 }
 
+// ============ COMMISSIONER/RDC DASHBOARD ============
+function CommissionerDashboard({
+  stats,
+  statsLoading,
+  regions,
+  regionsLoading,
+  violations,
+  violationsLoading,
+  trends,
+  trendsLoading,
+  monthly,
+  monthlyLoading,
+  topOffenders,
+  offendersLoading,
+  heatmap,
+  heatmapLoading,
+  trendDays,
+  setTrendDays,
+  mounted,
+  syncInfo,
+  onExport,
+  isExporting,
+}: {
+  stats: { totalObservations: number; uniqueVessels: number; detectedPenalty: number; penaltyImposed: number; penaltyRecovered: number; todayObservations: number; pendingActions?: number } | undefined;
+  statsLoading: boolean;
+  regions: { id: string; name: string; totalObservations: number; uniqueVessels: number; pendingCases: number; penaltyImposed: number; penaltyRecovered: number }[] | undefined;
+  regionsLoading: boolean;
+  violations: { name: string; count: number; percentage: number }[] | undefined;
+  violationsLoading: boolean;
+  trends: { date: string; observations: number; vessels: number }[] | undefined;
+  trendsLoading: boolean;
+  monthly: { monthName: string; observations: number; vessels: number; penalty: number }[] | undefined;
+  monthlyLoading: boolean;
+  topOffenders: { id: string; name: string; registrationNumber: string; vesselType: string; totalViolations: number; riskCategory: string; isFlagged: boolean }[] | undefined;
+  offendersLoading: boolean;
+  heatmap: number[][] | undefined;
+  heatmapLoading: boolean;
+  trendDays: number;
+  setTrendDays: (days: number) => void;
+  mounted: boolean;
+  syncInfo: { lastBatch?: { completedAt: string } | null } | undefined;
+  onExport: () => void;
+  isExporting: boolean;
+}) {
+  // Calculate totals
+  const totalPending = regions?.reduce((sum, r) => sum + r.pendingCases, 0) || 0;
+  const totalDisposed = (stats?.totalObservations || 0) - totalPending;
+  const totalPenaltyImposed = stats?.penaltyImposed || 0;
+  const totalPenaltyRecovered = stats?.penaltyRecovered || 0;
+  const recoveryRate = totalPenaltyImposed > 0 ? Math.round((totalPenaltyRecovered / totalPenaltyImposed) * 100) : 0;
+  const disposalRate = stats?.totalObservations ? Math.round((totalDisposed / stats.totalObservations) * 100) : 0;
+
+  // Process district data for charts
+  const districtData = regions?.map((r, i) => ({
+    name: r.name,
+    observations: r.totalObservations,
+    vessels: r.uniqueVessels,
+    pending: r.pendingCases,
+    disposed: r.totalObservations - r.pendingCases,
+    penaltyImposed: r.penaltyImposed,
+    penaltyRecovered: r.penaltyRecovered,
+    recoveryRate: r.penaltyImposed > 0 ? Math.round((r.penaltyRecovered / r.penaltyImposed) * 100) : 0,
+    disposalRate: r.totalObservations > 0 ? Math.round(((r.totalObservations - r.pendingCases) / r.totalObservations) * 100) : 0,
+    fill: COLORS.districts[r.name] || COLORS.violations[i % COLORS.violations.length],
+  })).sort((a, b) => b.observations - a.observations) || [];
+
+  // Process violation data
+  const violationData = violations?.map((v, i) => ({
+    name: v.name.length > 20 ? v.name.substring(0, 20) + '...' : v.name,
+    fullName: v.name,
+    value: v.count,
+    percentage: v.percentage,
+    color: COLORS.violations[i % COLORS.violations.length],
+  })) || [];
+
+  // Process trend data
+  const trendData = trends?.map(t => ({
+    date: format(new Date(t.date), 'dd MMM'),
+    cases: t.observations,
+    vessels: t.vessels,
+  })) || [];
+
+  // Process monthly data
+  const monthlyData = monthly?.map(m => ({
+    month: m.monthName.slice(0, 3),
+    observations: m.observations,
+    vessels: m.vessels,
+    penalty: m.penalty,
+  })) || [];
+
+  // District performance ranking - sorted by disposal rate
+  const districtPerformance = [...districtData].sort((a, b) => b.disposalRate - a.disposalRate);
+
+  return (
+    <div className="space-y-6 pb-8">
+      {/* Header - Not included in PDF export */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">RDC Executive Dashboard</h1>
+          <p className="text-muted-foreground">
+            Comprehensive analytics for drone surveillance operations
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {mounted && syncInfo?.lastBatch && (
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="gap-2 py-1.5">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                Last Sync
+              </Badge>
+              <span className="text-sm text-muted-foreground">
+                {format(new Date(syncInfo.lastBatch.completedAt), 'dd MMM, HH:mm')}
+              </span>
+            </div>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onExport}
+            disabled={isExporting || statsLoading}
+            className="gap-2"
+          >
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileDown className="h-4 w-4" />
+            )}
+            Export PDF
+          </Button>
+        </div>
+      </div>
+
+      {/* Dashboard Content - This will be captured for PDF export */}
+      <div id="commissioner-dashboard-content" className="space-y-6 bg-white">
+
+      {/* Executive Summary KPIs */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <KpiCard
+          title="Total Cases"
+          value={formatNumber(stats?.totalObservations || 0)}
+          icon={<Eye className="h-4 w-4" />}
+          color="red"
+          isLoading={statsLoading}
+        />
+        <KpiCard
+          title="Disposed"
+          value={formatNumber(totalDisposed)}
+          icon={<CheckCircle2 className="h-4 w-4" />}
+          color="green"
+          isLoading={regionsLoading}
+        />
+        <KpiCard
+          title="Pending"
+          value={formatNumber(totalPending)}
+          icon={<Clock className="h-4 w-4" />}
+          color="yellow"
+          isLoading={regionsLoading}
+        />
+        <KpiCard
+          title="Penalty Detected"
+          value={formatCurrencyFull(stats?.detectedPenalty || 0)}
+          icon={<IndianRupee className="h-4 w-4" />}
+          color="blue"
+          isLoading={statsLoading}
+        />
+        <KpiCard
+          title="Penalty Imposed"
+          value={formatCurrencyFull(totalPenaltyImposed)}
+          icon={<IndianRupee className="h-4 w-4" />}
+          color="purple"
+          isLoading={statsLoading}
+        />
+        <KpiCard
+          title="Recovered"
+          value={formatCurrencyFull(totalPenaltyRecovered)}
+          icon={<TrendingUp className="h-4 w-4" />}
+          color="green"
+          isLoading={statsLoading}
+        />
+      </div>
+
+      <Separator />
+
+      {/* Trends and Analysis */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Daily Trend */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity className="h-5 w-5 text-primary" />
+                <CardTitle className="text-base">Daily Case Trend</CardTitle>
+              </div>
+              <Select value={trendDays.toString()} onValueChange={(v) => setTrendDays(parseInt(v))}>
+                <SelectTrigger className="w-[100px] h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">7 days</SelectItem>
+                  <SelectItem value="14">14 days</SelectItem>
+                  <SelectItem value="30">30 days</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {trendsLoading ? (
+              <Skeleton className="h-[250px] w-full" />
+            ) : (
+              <div className="h-[250px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={trendData} margin={{ left: 0, right: 10, top: 10 }}>
+                    <defs>
+                      <linearGradient id="colorCasesRdc" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.4} />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{
+                        fontSize: '12px',
+                        borderRadius: '8px',
+                        backgroundColor: 'hsl(var(--popover))',
+                        border: '1px solid hsl(var(--border))',
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="cases"
+                      stroke={COLORS.primary}
+                      fillOpacity={1}
+                      fill="url(#colorCasesRdc)"
+                      name="Cases"
+                      strokeWidth={2}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Monthly Trend */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              <CardTitle className="text-base">Monthly Performance</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {monthlyLoading ? (
+              <Skeleton className="h-[250px] w-full" />
+            ) : (
+              <div className="h-[250px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={monthlyData} margin={{ left: 0, right: 10, top: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.4} />
+                    <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{
+                        fontSize: '12px',
+                        borderRadius: '8px',
+                        backgroundColor: 'hsl(var(--popover))',
+                        border: '1px solid hsl(var(--border))',
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: '12px' }} />
+                    <Line type="monotone" dataKey="observations" stroke={COLORS.primary} strokeWidth={2} dot={{ r: 4 }} name="Cases" />
+                    <Line type="monotone" dataKey="vessels" stroke={COLORS.info} strokeWidth={2} dot={{ r: 4 }} name="Vessels" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* District Performance Overview */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Flag className="h-5 w-5 text-primary" />
+            <h3 className="text-base font-semibold">District Performance</h3>
+          </div>
+          <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
+            Ranked by Disposal Rate
+          </Badge>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {regionsLoading ? (
+            <>
+              {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24 w-full" />)}
+            </>
+          ) : (
+            districtPerformance.map((d, idx) => (
+              <Card
+                key={d.name}
+                className="hover:shadow-md transition-shadow"
+                style={{ borderLeftWidth: '4px', borderLeftColor: d.fill }}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold",
+                        idx === 0 ? "bg-yellow-100 text-yellow-700" :
+                        idx === 1 ? "bg-gray-200 text-gray-700" :
+                        idx === 2 ? "bg-orange-100 text-orange-700" :
+                        "bg-muted text-muted-foreground"
+                      )}>
+                        {idx + 1}
+                      </span>
+                      <span className="font-semibold">{d.name}</span>
+                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      {d.observations} cases
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-muted-foreground text-xs">Disposal Rate</span>
+                      <div className={cn("font-bold text-lg", d.disposalRate >= 70 ? "text-green-600" : d.disposalRate >= 50 ? "text-yellow-600" : "text-red-600")}>
+                        {d.disposalRate}%
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">Recovery Rate</span>
+                      <div className={cn("font-bold text-lg", d.recoveryRate >= 70 ? "text-green-600" : d.recoveryRate >= 50 ? "text-yellow-600" : "text-red-600")}>
+                        {d.recoveryRate}%
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Violation and Recovery Analysis */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Violation Types */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-primary" />
+              <CardTitle className="text-base">Violation Type Distribution</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {violationsLoading ? (
+              <Skeleton className="h-[280px] w-full" />
+            ) : (
+              <div className="flex items-center gap-6">
+                <div className="relative w-[180px] h-[180px] flex-shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={violationData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={80}
+                        paddingAngle={2}
+                        dataKey="value"
+                      >
+                        {violationData.map((entry, index) => (
+                          <Cell key={`cell-v-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value, _, props) => [`${formatNumber(Number(value))} (${props.payload.percentage}%)`, props.payload.fullName]}
+                        contentStyle={{
+                          fontSize: '12px',
+                          borderRadius: '8px',
+                          backgroundColor: 'hsl(var(--popover))',
+                          border: '1px solid hsl(var(--border))',
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <p className="text-xl font-bold">{stats?.totalObservations || 0}</p>
+                      <p className="text-xs text-muted-foreground">Total</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex-1 space-y-2">
+                  {violationData.slice(0, 5).map((v) => (
+                    <div key={v.name} className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: v.color }} />
+                      <span className="text-xs flex-1 truncate" title={v.fullName}>{v.name}</span>
+                      <span className="text-xs font-medium">{v.percentage}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Penalty Recovery by District */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <IndianRupee className="h-5 w-5 text-primary" />
+                <CardTitle className="text-base">Penalty Recovery by District</CardTitle>
+              </div>
+              <Badge className={cn(
+                "text-xs",
+                recoveryRate >= 70 ? "bg-green-100 text-green-700" :
+                recoveryRate >= 50 ? "bg-yellow-100 text-yellow-700" :
+                "bg-red-100 text-red-700"
+              )}>
+                {recoveryRate}% Overall
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {regionsLoading ? (
+              <Skeleton className="h-[250px] w-full" />
+            ) : (
+              <div className="h-[250px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={districtData} margin={{ left: 10, right: 10, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.4} />
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => formatCurrency(v)} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      formatter={(value) => [formatCurrencyFull(Number(value)), '']}
+                      contentStyle={{
+                        fontSize: '12px',
+                        borderRadius: '8px',
+                        backgroundColor: 'hsl(var(--popover))',
+                        border: '1px solid hsl(var(--border))',
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: '11px' }} iconType="square" iconSize={10} />
+                    <Bar dataKey="penaltyImposed" fill="#F59E0B" name="Imposed" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="penaltyRecovered" fill="#10B981" name="Recovered" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Separator />
+
+      {/* Top Offenders Table */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Flag className="h-5 w-5 text-primary" />
+              <CardTitle className="text-base">Top Offending Vessels</CardTitle>
+            </div>
+            <Badge variant="destructive" className="text-xs">
+              {topOffenders?.filter(v => v.isFlagged).length || 0} Flagged
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {offendersLoading ? (
+            <div className="p-6 space-y-3">
+              {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+          ) : topOffenders && topOffenders.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12">#</TableHead>
+                  <TableHead>Vessel</TableHead>
+                  <TableHead>Registration</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="text-center">Violations</TableHead>
+                  <TableHead className="text-center">Risk</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {topOffenders.slice(0, 8).map((vessel, index) => (
+                  <TableRow key={vessel.id}>
+                    <TableCell>
+                      <div className={cn(
+                        'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold',
+                        index < 3 ? 'bg-red-100 text-red-700' : 'bg-muted text-muted-foreground'
+                      )}>
+                        {index + 1}
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        {vessel.name}
+                        {vessel.isFlagged && <Flag className="h-3 w-3 text-red-500 fill-red-500" />}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{vessel.registrationNumber}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs">{vessel.vesselType}</Badge>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="font-semibold text-red-600">{vessel.totalViolations}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge className={cn(
+                        'text-xs',
+                        vessel.riskCategory === 'high' ? 'bg-red-100 text-red-700' :
+                        vessel.riskCategory === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-green-100 text-green-700'
+                      )}>
+                        {vessel.riskCategory}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {vessel.isFlagged ? (
+                        <Badge variant="destructive" className="text-xs">Flagged</Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs">Active</Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="p-8 text-center text-muted-foreground">
+              <Ship className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <p>No vessel data available</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Summary Footer */}
+      <Card className="bg-gradient-to-r from-primary/5 to-primary/10">
+        <CardContent className="py-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 text-center">
+            <div>
+              <p className="text-2xl font-bold">{districtData.length}</p>
+              <p className="text-xs text-muted-foreground">Districts</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{violationData.length}</p>
+              <p className="text-xs text-muted-foreground">Violation Types</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-green-600">{formatNumber(totalDisposed)}</p>
+              <p className="text-xs text-muted-foreground">Disposed Cases</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-yellow-600">{formatNumber(totalPending)}</p>
+              <p className="text-xs text-muted-foreground">Pending Cases</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-green-600">{disposalRate}%</p>
+              <p className="text-xs text-muted-foreground">Disposal Rate</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-purple-600">{recoveryRate}%</p>
+              <p className="text-xs text-muted-foreground">Recovery Rate</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      </div>
+    </div>
+  );
+}
+
+// ============ OPERATOR/ACF DASHBOARD ============
+function OperatorAcfDashboard({
+  user,
+  stats,
+  statsLoading,
+  regions,
+  regionsLoading,
+  violations,
+  violationsLoading,
+  trends,
+  trendsLoading,
+  trendDays,
+  setTrendDays,
+  mounted,
+}: {
+  user: { role: string; name?: string; enforcementArea?: { id: string; name: string } | null } | null;
+  stats: { totalObservations: number; uniqueVessels: number; detectedPenalty: number; penaltyImposed: number; penaltyRecovered: number; todayObservations: number; pendingActions?: number } | undefined;
+  statsLoading: boolean;
+  regions: { id: string; name: string; totalObservations: number; uniqueVessels: number; pendingCases: number; penaltyImposed: number; penaltyRecovered: number }[] | undefined;
+  regionsLoading: boolean;
+  violations: { name: string; count: number; percentage: number }[] | undefined;
+  violationsLoading: boolean;
+  trends: { date: string; observations: number; vessels: number }[] | undefined;
+  trendsLoading: boolean;
+  trendDays: number;
+  setTrendDays: (days: number) => void;
+  mounted: boolean;
+}) {
+  const isAcf = user?.role === 'acf';
+
+  // For ACF, get their district region for display name
+  const userRegion = isAcf && user?.enforcementArea?.id && regions
+    ? regions.find(r => r.id === user.enforcementArea?.id)
+    : null;
+
+  // Calculate pending from stats or region data
+  // For ACF: use their district's region data (backend already filters stats by enforcementAreaId)
+  // For Operator: use all regions
+  const pendingCases = isAcf && userRegion
+    ? userRegion.pendingCases
+    : regions?.reduce((sum, r) => sum + r.pendingCases, 0) || (stats?.pendingActions || 0);
+
+  // Stats are already filtered by backend for ACF users
+  const displayStats = {
+    totalCases: stats?.totalObservations || 0,
+    pending: pendingCases,
+    disposed: (stats?.totalObservations || 0) - pendingCases,
+    uniqueVessels: stats?.uniqueVessels || 0,
+    detectedPenalty: stats?.detectedPenalty || 0,
+    penaltyImposed: stats?.penaltyImposed || 0,
+    penaltyRecovered: stats?.penaltyRecovered || 0,
+  };
+
+  // Case status pie chart data
+  const caseStatusData = [
+    { name: 'Pending', value: displayStats.pending, color: '#F59E0B' },
+    { name: 'Disposed', value: displayStats.disposed, color: '#10B981' },
+  ].filter(d => d.value > 0);
+
+  // Trend data for line chart
+  const trendData = trends?.map(t => ({
+    date: format(new Date(t.date), 'dd MMM'),
+    cases: t.observations,
+    vessels: t.vessels,
+  })) || [];
+
+  // Violation breakdown data
+  const violationData = violations?.map((v, i) => ({
+    name: v.name,
+    value: v.count,
+    percentage: v.percentage,
+    color: COLORS.violations[i % COLORS.violations.length],
+  })) || [];
+
+  return (
+    <div className="space-y-6 pb-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">
+            {isAcf ? 'ACF Dashboard' : 'Operator Dashboard'}
+          </h1>
+          <p className="text-muted-foreground">
+            {isAcf && userRegion
+              ? `Case management for ${userRegion.name} district`
+              : 'Case management overview'}
+          </p>
+        </div>
+        {mounted && (
+          <Badge variant="outline" className="gap-2 py-1.5 px-3">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            {isAcf ? 'ACF' : 'Operator'} View
+          </Badge>
+        )}
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard
+          title="Total Cases"
+          value={formatNumber(displayStats.totalCases)}
+          subtitle="All cases"
+          icon={<Eye className="h-4 w-4" />}
+          color="red"
+          isLoading={statsLoading || regionsLoading}
+        />
+        <KpiCard
+          title="Disposed Cases"
+          value={formatNumber(displayStats.disposed)}
+          subtitle="Resolved"
+          icon={<CheckCircle2 className="h-4 w-4" />}
+          color="green"
+          isLoading={statsLoading || regionsLoading}
+        />
+        <KpiCard
+          title="Pending Cases"
+          value={formatNumber(displayStats.pending)}
+          subtitle="Awaiting action"
+          icon={<Clock className="h-4 w-4" />}
+          color="yellow"
+          isLoading={statsLoading || regionsLoading}
+        />
+        <KpiCard
+          title="Penalty Detected"
+          value={formatCurrencyFull(displayStats.detectedPenalty)}
+          subtitle="Expected amount"
+          icon={<IndianRupee className="h-4 w-4" />}
+          color="blue"
+          isLoading={statsLoading || regionsLoading}
+        />
+      </div>
+
+      {/* Penalty Stats - ACF only sees their district */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <KpiCard
+          title="Penalty Imposed"
+          value={formatCurrencyFull(displayStats.penaltyImposed)}
+          subtitle="Total amount"
+          icon={<IndianRupee className="h-4 w-4" />}
+          color="purple"
+          isLoading={statsLoading || regionsLoading}
+        />
+        <KpiCard
+          title="Penalty Recovered"
+          value={formatCurrencyFull(displayStats.penaltyRecovered)}
+          subtitle={`${displayStats.penaltyImposed > 0 ? Math.round((displayStats.penaltyRecovered / displayStats.penaltyImposed) * 100) : 0}% recovery rate`}
+          icon={<TrendingUp className="h-4 w-4" />}
+          color="green"
+          isLoading={statsLoading || regionsLoading}
+        />
+      </div>
+
+      <Separator />
+
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Case Status Pie Chart */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <FileWarning className="h-5 w-5 text-primary" />
+              <CardTitle className="text-base">Case Status Distribution</CardTitle>
+            </div>
+            <CardDescription>Breakdown of pending vs disposed cases</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {statsLoading || regionsLoading ? (
+              <Skeleton className="h-[280px] w-full" />
+            ) : caseStatusData.length > 0 ? (
+              <div className="h-[280px] flex items-center justify-center">
+                <div className="relative w-full max-w-[280px] h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={caseStatusData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={70}
+                        outerRadius={110}
+                        paddingAngle={3}
+                        dataKey="value"
+                      >
+                        {caseStatusData.map((entry, index) => (
+                          <Cell key={`cell-status-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value) => [`${formatNumber(Number(value))} cases`]}
+                        contentStyle={{
+                          fontSize: '12px',
+                          borderRadius: '8px',
+                          backgroundColor: 'hsl(var(--popover))',
+                          border: '1px solid hsl(var(--border))',
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <p className="text-3xl font-bold">{displayStats.totalCases}</p>
+                      <p className="text-xs text-muted-foreground">Total Cases</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="h-[280px] flex items-center justify-center text-muted-foreground">
+                <div className="text-center">
+                  <FileWarning className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No case data available</p>
+                </div>
+              </div>
+            )}
+            {/* Legend */}
+            <div className="flex justify-center gap-6 mt-4">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-green-500" />
+                <span className="text-sm">Disposed ({displayStats.disposed})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                <span className="text-sm">Pending ({displayStats.pending})</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Cases Over Time Line Chart */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-primary" />
+                <CardTitle className="text-base">Cases Over Time</CardTitle>
+              </div>
+              <Select value={trendDays.toString()} onValueChange={(v) => setTrendDays(parseInt(v))}>
+                <SelectTrigger className="w-[110px] h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">7 days</SelectItem>
+                  <SelectItem value="14">14 days</SelectItem>
+                  <SelectItem value="30">30 days</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <CardDescription>Daily violation trends</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {trendsLoading ? (
+              <Skeleton className="h-[280px] w-full" />
+            ) : trendData.length > 0 ? (
+              <div className="h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={trendData} margin={{ left: 0, right: 10, top: 10, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorCases" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.4} />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{
+                        fontSize: '12px',
+                        borderRadius: '8px',
+                        backgroundColor: 'hsl(var(--popover))',
+                        border: '1px solid hsl(var(--border))',
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: '12px' }} />
+                    <Area
+                      type="monotone"
+                      dataKey="cases"
+                      stroke={COLORS.primary}
+                      fillOpacity={1}
+                      fill="url(#colorCases)"
+                      name="Cases"
+                      strokeWidth={2}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-[280px] flex items-center justify-center text-muted-foreground">
+                <div className="text-center">
+                  <TrendingUp className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No trend data available</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Separator />
+
+      {/* Violation Types Breakdown */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-primary" />
+            <CardTitle className="text-base">Violation Types</CardTitle>
+          </div>
+          <CardDescription>Distribution of violations by type</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {violationsLoading ? (
+            <Skeleton className="h-[200px] w-full" />
+          ) : violationData.length > 0 ? (
+            <div className="space-y-3">
+              {violationData.map((v) => (
+                <div key={v.name} className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: v.color }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium truncate">{v.name}</span>
+                      <span className="text-sm text-muted-foreground ml-2">{v.value} ({v.percentage}%)</span>
+                    </div>
+                    <div className="h-2 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${v.percentage}%`,
+                          backgroundColor: v.color,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="h-[200px] flex items-center justify-center text-muted-foreground">
+              <div className="text-center">
+                <AlertTriangle className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                <p>No violation data available</p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Quick Stats Footer */}
+      <Card className="bg-gradient-to-r from-primary/5 to-primary/10">
+        <CardContent className="py-5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+            <div>
+              <p className="text-2xl font-bold text-primary">{formatNumber(displayStats.totalCases)}</p>
+              <p className="text-xs text-muted-foreground">Total Cases</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-green-600">{formatNumber(displayStats.disposed)}</p>
+              <p className="text-xs text-muted-foreground">Disposed</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-yellow-600">{formatNumber(displayStats.pending)}</p>
+              <p className="text-xs text-muted-foreground">Pending</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-blue-600">{displayStats.penaltyImposed > 0 ? Math.round((displayStats.penaltyRecovered / displayStats.penaltyImposed) * 100) : 0}%</p>
+              <p className="text-xs text-muted-foreground">Recovery Rate</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ============ MAIN DASHBOARD ============
 export default function DashboardPage() {
   const [trendDays, setTrendDays] = useState(30);
@@ -468,29 +1435,37 @@ export default function DashboardPage() {
     setMounted(true);
   }, []);
 
+  // Get current user for role-based rendering
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
+  const isOperator = user?.role === 'operator';
+  const isAcf = user?.role === 'acf';
+
+  // ACF users should see only their district data
+  const acfFilterParams = isAcf && user?.enforcementArea?.id
+    ? { enforcementAreaId: user.enforcementArea.id }
+    : undefined;
+
   // Distance analysis filter params
   const distanceFilterParams = distanceDistrictFilter !== 'all'
     ? { enforcementAreaId: distanceDistrictFilter }
     : undefined;
 
-  // Fetch all data (unfiltered - individual cards have their own filters)
-  const { data: stats, isLoading: statsLoading } = useDashboardStats();
-  const { data: trends, isLoading: trendsLoading } = useDashboardTrends(trendDays);
+  // Fetch all data - ACF users get filtered data, others get all data
+  const { data: stats, isLoading: statsLoading } = useDashboardStats(acfFilterParams);
+  const { data: trends, isLoading: trendsLoading } = useDashboardTrends(trendDays, acfFilterParams);
   const { data: regions, isLoading: regionsLoading } = useRegionStats();
-  const { data: violations, isLoading: violationsLoading } = useViolationStats();
+  const { data: violations, isLoading: violationsLoading } = useViolationStats(acfFilterParams);
   const { data: vesselTypes, isLoading: vesselTypesLoading } = useVesselTypeStats();
   const { data: monthly, isLoading: monthlyLoading } = useMonthlyData(9);
   const { data: topOffenders, isLoading: offendersLoading } = useTopOffenders(10);
   const { data: heatmap, isLoading: heatmapLoading } = useHeatmapData();
   const { data: distanceData, isLoading: distanceLoading } = useDistanceAnalysis(distanceFilterParams);
+  const { data: distanceByDistrict, isLoading: distanceByDistrictLoading } = useDistanceByDistrict();
   const { data: syncInfo } = useSyncInfo();
   const { data: filterOptions } = useFilterOptions();
 
-  // Get current user for role-based rendering
-  const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin';
-
-  // Export state
+  // Export state - must be before conditional returns
   const [isExporting, setIsExporting] = useState(false);
 
   // Handle Excel export
@@ -530,6 +1505,84 @@ export default function DashboardPage() {
       setIsExporting(false);
     }
   };
+
+  // Handle PDF export with graphs
+  const handleExportPdf = async () => {
+    setIsExporting(true);
+    try {
+      // Determine which dashboard is active
+      const isCommissioner = user?.role === 'commissioner';
+      const elementId = isCommissioner ? 'commissioner-dashboard-content' : 'admin-dashboard-content';
+      const title = isCommissioner ? 'RDC Executive Dashboard Report' : 'Drone Surveillance Dashboard Report';
+      const filename = isCommissioner
+        ? `RDC_Dashboard_Report_${new Date().toISOString().split('T')[0]}.pdf`
+        : `Dashboard_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+
+      await exportDashboardToPdf(elementId, {
+        title,
+        filename,
+        orientation: 'portrait',
+      });
+      toast.success('PDF Export successful', {
+        description: 'Dashboard PDF with graphs has been downloaded.',
+      });
+    } catch (error) {
+      console.error('PDF Export failed:', error);
+      toast.error('PDF Export failed', {
+        description: 'Failed to generate PDF report. Please try again.',
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Commissioner/RDC Dashboard - Executive view with detailed analytics
+  if (user?.role === 'commissioner') {
+    return (
+      <CommissionerDashboard
+        stats={stats}
+        statsLoading={statsLoading}
+        regions={regions}
+        regionsLoading={regionsLoading}
+        violations={violations}
+        violationsLoading={violationsLoading}
+        trends={trends}
+        trendsLoading={trendsLoading}
+        monthly={monthly}
+        monthlyLoading={monthlyLoading}
+        topOffenders={topOffenders}
+        offendersLoading={offendersLoading}
+        heatmap={heatmap}
+        heatmapLoading={heatmapLoading}
+        trendDays={trendDays}
+        setTrendDays={setTrendDays}
+        mounted={mounted}
+        syncInfo={syncInfo}
+        onExport={handleExportPdf}
+        isExporting={isExporting}
+      />
+    );
+  }
+
+  // Operator/ACF Dashboard
+  if (isOperator || isAcf) {
+    return (
+      <OperatorAcfDashboard
+        user={user}
+        stats={stats}
+        statsLoading={statsLoading}
+        regions={regions}
+        regionsLoading={regionsLoading}
+        violations={violations}
+        violationsLoading={violationsLoading}
+        trends={trends}
+        trendsLoading={trendsLoading}
+        trendDays={trendDays}
+        setTrendDays={setTrendDays}
+        mounted={mounted}
+      />
+    );
+  }
 
   // Process data for charts
   const districtData = regions?.map((r, i) => ({
@@ -649,7 +1702,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold">Dashboard for Drone Based Surveillance</h1>
           <p className="text-muted-foreground">
-            Monitoring for fishing vessels along the coast of Maharashtra
+            Monitoring of fishing vessels by the Fisheries Department, Government of Maharashtra
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -676,7 +1729,7 @@ export default function DashboardPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={handleExportExcel}
+            onClick={handleExportPdf}
             disabled={isExporting || statsLoading || regionsLoading}
             className="gap-2 cursor-pointer"
           >
@@ -687,52 +1740,49 @@ export default function DashboardPage() {
               </>
             ) : (
               <>
-                <Download className="h-4 w-4" />
-                Export Excel
+                <FileDown className="h-4 w-4" />
+                Export PDF
               </>
             )}
           </Button>
         </div>
       </div>
 
+      {/* Dashboard Content for PDF Export */}
+      <div id="admin-dashboard-content" className="space-y-6 bg-white">
       {/* ============ KPI CARDS ============ */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <KpiCard
           title="Total Violations"
           value={formatNumber(stats?.totalObservations || 0)}
-          subtitle={`${stats?.todayObservations || 0} today`}
           icon={<Eye className="h-4 w-4" />}
           color="red"
           isLoading={statsLoading}
         />
         <KpiCard
-          title="Unique Vessels"
-          value={formatNumber(stats?.uniqueVessels || 0)}
-          subtitle="Detected"
-          icon={<Ship className="h-4 w-4" />}
-          color="blue"
-          isLoading={statsLoading}
-        />
-        <KpiCard
-          title="Pending Cases"
-          value={formatNumber(totalPending)}
-          subtitle="Awaiting action"
-          icon={<Clock className="h-4 w-4" />}
-          color="yellow"
-          isLoading={regionsLoading}
-        />
-        <KpiCard
           title="Disposed Cases"
           value={formatNumber(totalDisposed)}
-          subtitle="Resolved"
           icon={<CheckCircle2 className="h-4 w-4" />}
           color="green"
           isLoading={regionsLoading}
         />
         <KpiCard
+          title="Pending Cases"
+          value={formatNumber(totalPending)}
+          icon={<Clock className="h-4 w-4" />}
+          color="yellow"
+          isLoading={regionsLoading}
+        />
+        <KpiCard
+          title="Penalty Detected"
+          value={formatCurrencyFull(stats?.detectedPenalty || 0)}
+          icon={<IndianRupee className="h-4 w-4" />}
+          color="blue"
+          isLoading={statsLoading}
+        />
+        <KpiCard
           title="Penalty Imposed"
           value={formatCurrencyFull(stats?.penaltyImposed || 0)}
-          subtitle="Total"
           icon={<IndianRupee className="h-4 w-4" />}
           color="purple"
           isLoading={statsLoading}
@@ -740,7 +1790,6 @@ export default function DashboardPage() {
         <KpiCard
           title="Penalty Recovered"
           value={formatCurrencyFull(stats?.penaltyRecovered || 0)}
-          subtitle="Total Recovered"
           icon={<TrendingUp className="h-4 w-4" />}
           color="green"
           isLoading={statsLoading}
@@ -1155,6 +2204,9 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-base">Distance Wise Distribution</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Total: {formatNumber(distanceData?.distribution?.reduce((sum, d) => sum + d.count, 0) || 0)} observations
+                  </p>
                 </div>
                 <Select value={distanceDistrictFilter} onValueChange={setDistanceDistrictFilter}>
                   <SelectTrigger className="w-[140px] h-8">
@@ -1201,6 +2253,9 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-base">Distribution Based on Distance from Coast</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Total: {formatNumber(distanceByDistrict?.reduce((sum, d) => sum + d.total, 0) || 0)} observations
+                  </p>
                 </div>
                 <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
                   {distanceData?.summary.coveragePercent || 0}% GPS
@@ -1208,48 +2263,53 @@ export default function DashboardPage() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              {regionsLoading || distanceLoading ? (
+              {distanceByDistrictLoading ? (
                 <Skeleton className="h-[250px] w-full m-6" />
               ) : (
                 <div className="max-h-[220px] overflow-y-auto px-6 py-3 space-y-3">
-                  {districtData.map((district, idx) => {
-                    const total = district.observations;
-                    const nearShoreRatio = 0.4 + (idx * 0.05);
-                    const nearShore = Math.round(total * nearShoreRatio);
-                    const midZone = total - nearShore;
+                  {(distanceByDistrict || []).map((district, idx) => {
+                    const total = district.total;
+                    const nearShore = district.nearShore;
+                    const midZone = district.midZone;
+                    const districtColor = COLORS.violations[idx % COLORS.violations.length];
+
+                    if (total === 0) return null;
 
                     return (
                       <div
-                        key={district.name}
+                        key={district.enforcementAreaId}
                         className="p-3 rounded-lg border border-border/50 hover:border-border transition-colors cursor-pointer"
-                        style={{ backgroundColor: `${district.fill}08` }}
+                        style={{ backgroundColor: `${districtColor}08` }}
                         onClick={() => {
-                          const area = filterOptions?.enforcementAreas?.find(a => a.name === district.name);
-                          if (area) setDistanceDistrictFilter(area.id);
+                          setDistanceDistrictFilter(district.enforcementAreaId);
                         }}
                       >
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: district.fill }} />
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: districtColor }} />
                             <span className="text-sm font-semibold">{district.name}</span>
                           </div>
                           <span className="text-xs text-muted-foreground">{formatNumber(total)} obs</span>
                         </div>
                         <div className="flex gap-1 h-5 rounded overflow-hidden">
-                          <div
-                            className="h-full flex items-center justify-center text-[10px] font-medium text-white"
-                            style={{ width: `${(nearShore / total) * 100}%`, backgroundColor: '#06b6d4', minWidth: '18px' }}
-                            title={`0-5 NM: ${nearShore}`}
-                          >
-                            {nearShore > total * 0.15 && nearShore}
-                          </div>
-                          <div
-                            className="h-full flex items-center justify-center text-[10px] font-medium text-white"
-                            style={{ width: `${(midZone / total) * 100}%`, backgroundColor: '#3b82f6', minWidth: '18px' }}
-                            title={`5-12 NM: ${midZone}`}
-                          >
-                            {midZone > total * 0.15 && midZone}
-                          </div>
+                          {nearShore > 0 && (
+                            <div
+                              className="h-full flex items-center justify-center text-[10px] font-medium text-white"
+                              style={{ width: `${(nearShore / total) * 100}%`, backgroundColor: '#06b6d4', minWidth: '30px' }}
+                              title={`0-5 NM: ${nearShore}`}
+                            >
+                              {nearShore}
+                            </div>
+                          )}
+                          {midZone > 0 && (
+                            <div
+                              className="h-full flex items-center justify-center text-[10px] font-medium text-white"
+                              style={{ width: `${(midZone / total) * 100}%`, backgroundColor: '#3b82f6', minWidth: '30px' }}
+                              title={`5-12 NM: ${midZone}`}
+                            >
+                              {midZone}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1341,8 +2401,8 @@ export default function DashboardPage() {
                 {/* Stats Grid */}
                 <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="bg-white rounded-xl p-4 border shadow-sm text-center">
-                    <p className="text-xs text-muted-foreground mb-1">Unique Vessels</p>
-                    <p className="text-xl font-bold text-gray-800">{stats?.uniqueVessels || 0}</p>
+                    <p className="text-xs text-muted-foreground mb-1">Penalty Detected</p>
+                    <p className="text-xl font-bold text-blue-600">{formatCurrencyFull(stats?.detectedPenalty || 0)}</p>
                   </div>
                   <div className="bg-white rounded-xl p-4 border shadow-sm text-center">
                     <p className="text-xs text-muted-foreground mb-1">Penalty Imposed</p>
@@ -1533,6 +2593,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       )}
+      </div>
     </div>
   );
 }
