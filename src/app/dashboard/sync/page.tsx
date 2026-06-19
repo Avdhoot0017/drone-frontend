@@ -79,7 +79,7 @@ function formatDuration(ms: number): string {
 
 export default function SyncPage() {
   const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin';
+  const canTriggerSync = true; // All authenticated users can trigger sync
 
   const { data: syncStatus, isLoading: statusLoading, refetch } = useSyncStatus();
   const { data: sheetInfo, isLoading: sheetLoading } = useSheetInfo();
@@ -112,7 +112,7 @@ export default function SyncPage() {
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
-          {isAdmin && (
+          {canTriggerSync && (
             <Button
               onClick={handleRunSync}
               disabled={runSync.isPending}

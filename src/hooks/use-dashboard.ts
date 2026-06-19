@@ -18,6 +18,7 @@ export const dashboardKeys = {
   observations: (params: ObservationParams) => [...dashboardKeys.all, 'observations', params] as const,
   heatmap: (filters?: FilterParams) => [...dashboardKeys.all, 'heatmap', filters] as const,
   distance: (filters?: FilterParams) => [...dashboardKeys.all, 'distance', filters] as const,
+  distanceByDistrict: (filters?: FilterParams) => [...dashboardKeys.all, 'distance-by-district', filters] as const,
   syncInfo: () => [...dashboardKeys.all, 'sync-info'] as const,
   filters: () => [...dashboardKeys.all, 'filters'] as const,
 };
@@ -118,6 +119,16 @@ export function useDistanceAnalysis(filters?: FilterParams) {
     queryKey: dashboardKeys.distance(filters),
     queryFn: async () => {
       const response = await dashboardApi.getDistanceAnalysis(filters);
+      return response.data.data!;
+    },
+  });
+}
+
+export function useDistanceByDistrict(filters?: FilterParams) {
+  return useQuery({
+    queryKey: dashboardKeys.distanceByDistrict(filters),
+    queryFn: async () => {
+      const response = await dashboardApi.getDistanceByDistrict(filters);
       return response.data.data!;
     },
   });

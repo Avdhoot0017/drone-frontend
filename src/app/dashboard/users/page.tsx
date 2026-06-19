@@ -18,6 +18,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   Users,
+  Upload,
+  X,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -60,14 +62,19 @@ import {
   useDeleteUser,
 } from '@/hooks/use-users';
 import { useAuthStore } from '@/stores/auth.store';
+import { useFilterOptions } from '@/hooks/use-dashboard';
 
 export default function UsersPage() {
   const { user: currentUser } = useAuthStore();
   const { data: users, isLoading } = useUsers();
+  const { data: filterOptions } = useFilterOptions();
   const createUser = useCreateUser();
   const resetPassword = useResetPassword();
   const updateStatus = useUpdateUserStatus();
   const deleteUser = useDeleteUser();
+
+  // Get enforcement areas (districts) list
+  const districts = filterOptions?.enforcementAreas || [];
 
   // Dialog states
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -85,7 +92,11 @@ export default function UsersPage() {
     role: 'member',
     email: '',
     password: '',
+    enforcementAreaId: '',
   });
+  const [certFile, setCertFile] = useState<File | null>(null);
+  const [privateKeyFile, setPrivateKeyFile] = useState<File | null>(null);
+  const [privateKeyPassword, setPrivateKeyPassword] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [useCustomPassword, setUseCustomPassword] = useState(false);
   const [resetPasswordValue, setResetPasswordValue] = useState('');
@@ -112,9 +123,66 @@ export default function UsersPage() {
       role: 'member',
       email: '',
       password: '',
+      enforcementAreaId: '',
     });
+    setCertFile(null);
+    setPrivateKeyFile(null);
+    setPrivateKeyPassword('');
     setFormError(null);
     setUseCustomPassword(false);
+  };
+
+  // Handle certificate file selection (.cer, .pem)
+  const handleCertFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const allowedExtensions = ['.cer', '.pem'];
+      const hasValidExt = allowedExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
+
+      if (!hasValidExt) {
+        setFormError('Only .cer and .pem certificate files are allowed');
+        return;
+      }
+      // Validate file size (5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setFormError('Certificate file must be less than 5MB');
+        return;
+      }
+      setCertFile(file);
+      setFormError(null);
+    }
+  };
+
+  // Remove certificate file
+  const removeCertFile = () => {
+    setCertFile(null);
+  };
+
+  // Handle private key file selection (.pfx, .p12)
+  const handlePrivateKeyFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const allowedExtensions = ['.pfx', '.p12'];
+      const hasValidExt = allowedExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
+
+      if (!hasValidExt) {
+        setFormError('Only .pfx and .p12 private key files are allowed');
+        return;
+      }
+      // Validate file size (10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        setFormError('Private key file must be less than 10MB');
+        return;
+      }
+      setPrivateKeyFile(file);
+      setFormError(null);
+    }
+  };
+
+  // Remove private key file
+  const removePrivateKeyFile = () => {
+    setPrivateKeyFile(null);
+    setPrivateKeyPassword('');
   };
 
   // Create user
@@ -127,15 +195,38 @@ export default function UsersPage() {
       setFormError('Full Name is required');
       return;
     }
+    // Email is mandatory for ACF, Operator, and Commissioner roles
+    if (['acf', 'operator', 'commissioner'].includes(formData.role) && !formData.email?.trim()) {
+      setFormError('Email is required for this role');
+      return;
+    }
+    // District is mandatory for ACF role
+    if (formData.role === 'acf' && !formData.enforcementAreaId?.trim()) {
+      setFormError('District is required for ACF role');
+      return;
+    }
+    // Both certificate and private key are mandatory for ACF role
+    if (formData.role === 'acf' && !certFile) {
+      setFormError('Certificate file (.cer or .pem) is required for ACF role');
+      return;
+    }
+    if (formData.role === 'acf' && !privateKeyFile) {
+      setFormError('Private key file (.pfx or .p12) is required for ACF role');
+      return;
+    }
     if (useCustomPassword && !formData.password?.trim()) {
       setFormError('Password is required when using custom password');
       return;
     }
 
     try {
-      const dataToSend = {
+      const dataToSend: CreateUserInput = {
         ...formData,
         password: useCustomPassword && formData.password?.trim() ? formData.password.trim() : undefined,
+        enforcementAreaId: formData.role === 'acf' && formData.enforcementAreaId?.trim() ? formData.enforcementAreaId.trim() : undefined,
+        certFile: formData.role === 'acf' && certFile ? certFile : undefined,
+        privateKeyFile: formData.role === 'acf' && privateKeyFile ? privateKeyFile : undefined,
+        privateKeyPassword: formData.role === 'acf' && privateKeyPassword ? privateKeyPassword : undefined,
       };
       const result = await createUser.mutateAsync(dataToSend);
       setCredentials(result);
@@ -256,16 +347,28 @@ export default function UsersPage() {
       header: ({ column }) => <DataTableColumnHeader column={column} title="Role" />,
       cell: ({ row }) => {
         const role = row.getValue('role') as string;
+        const roleColors: Record<string, string> = {
+          admin: 'bg-red-100 text-red-700 hover:bg-red-100',
+          member: 'bg-blue-100 text-blue-700 hover:bg-blue-100',
+          operator: 'bg-purple-100 text-purple-700 hover:bg-purple-100',
+          acf: 'bg-amber-100 text-amber-700 hover:bg-amber-100',
+          commissioner: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100',
+        };
+        const roleLabels: Record<string, string> = {
+          admin: 'Admin',
+          member: 'Member',
+          operator: 'Operator',
+          acf: 'ACF',
+          commissioner: 'Commissioner',
+        };
         return (
           <Badge
             className={cn(
               'font-medium border-0',
-              role === 'admin'
-                ? 'bg-red-100 text-red-700 hover:bg-red-100'
-                : 'bg-blue-100 text-blue-700 hover:bg-blue-100'
+              roleColors[role] || 'bg-gray-100 text-gray-700 hover:bg-gray-100'
             )}
           >
-            {role.charAt(0).toUpperCase() + role.slice(1)}
+            {roleLabels[role] || role.charAt(0).toUpperCase() + role.slice(1)}
           </Badge>
         );
       },
@@ -482,14 +585,14 @@ export default function UsersPage() {
 
       {/* Add User Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="sm:max-w-[420px] bg-white">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-[500px] w-[95vw] max-h-[90vh] bg-white flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="text-black">Add New User</DialogTitle>
             <DialogDescription>
               Create a new user account. {useCustomPassword ? 'Enter a custom password.' : 'Password will be auto-generated.'}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-5 py-4">
+          <div className="flex-1 overflow-y-auto space-y-4 py-4 px-1">
             {formError && (
               <div className="p-3 bg-red-50 text-red-700 rounded-lg flex items-center gap-2 text-sm">
                 <AlertTriangle className="h-4 w-4 flex-shrink-0" />
@@ -522,7 +625,10 @@ export default function UsersPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="email" className="text-gray-700">
-                Email <span className="text-gray-400 text-xs font-normal">(optional)</span>
+                Email {['acf', 'operator', 'commissioner'].includes(formData.role)
+                  ? <span className="text-red-500">*</span>
+                  : <span className="text-gray-400 text-xs font-normal">(optional)</span>
+                }
               </Label>
               <Input
                 id="email"
@@ -539,7 +645,15 @@ export default function UsersPage() {
               </Label>
               <Select
                 value={formData.role}
-                onValueChange={(value) => handleInputChange('role', value)}
+                onValueChange={(value) => {
+                  handleInputChange('role', value);
+                  // Clear enforcementAreaId and certificate files when role changes to non-ACF
+                  if (value !== 'acf') {
+                    handleInputChange('enforcementAreaId', '');
+                    removeCertFile();
+                    removePrivateKeyFile();
+                  }
+                }}
               >
                 <SelectTrigger className="h-10">
                   <SelectValue />
@@ -547,10 +661,163 @@ export default function UsersPage() {
                 <SelectContent className="bg-white">
                   <SelectItem value="member">Member</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="operator">Operator</SelectItem>
+                  <SelectItem value="acf">ACF (Asst. Commissioner)</SelectItem>
+                  <SelectItem value="commissioner">Commissioner</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-3 pt-2 border-t border-gray-200">
+            {/* District dropdown - only show for ACF role */}
+            {formData.role === 'acf' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="enforcementAreaId" className="text-gray-700">
+                  District <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  value={formData.enforcementAreaId || ''}
+                  onValueChange={(value) => handleInputChange('enforcementAreaId', value)}
+                >
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Select district" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white">
+                    {districts.map((district) => (
+                      <SelectItem key={district.id} value={district.id}>
+                        {district.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {/* Digital Signing Files - only for ACF role */}
+            {formData.role === 'acf' && (
+              <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center gap-2">
+                  <Key className="h-5 w-5 text-blue-600" />
+                  <Label className="text-blue-900 font-medium">
+                    Digital Signing Files <span className="text-red-500">*</span>
+                  </Label>
+                </div>
+                <p className="text-xs text-blue-700">
+                  Upload both your certificate file and private key for digitally signing case documents.
+                </p>
+
+                {/* Certificate File Upload (.cer, .pem) */}
+                <div className="space-y-2">
+                  <Label className="text-gray-700 text-sm">
+                    Certificate File <span className="text-red-500">*</span>
+                  </Label>
+                  {certFile ? (
+                    <div className="relative border rounded-lg p-3 bg-white">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 border rounded bg-green-100 flex-shrink-0 flex items-center justify-center">
+                          <Key className="h-5 w-5 text-green-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-700 truncate">
+                            {certFile.name}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {(certFile.size / 1024).toFixed(1)} KB - Certificate
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={removeCertFile}
+                          className="flex-shrink-0 h-8 w-8 text-gray-400 hover:text-red-500"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="flex items-center justify-center gap-3 w-full h-14 border-2 border-dashed border-blue-300 rounded-lg cursor-pointer bg-white hover:bg-blue-50 transition-colors">
+                      <Upload className="h-5 w-5 text-blue-500" />
+                      <div>
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium text-blue-600">Upload certificate</span> (.cer, .pem)
+                        </p>
+                      </div>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".cer,.pem"
+                        onChange={handleCertFileChange}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                {/* Private Key File Upload (.pfx, .p12) */}
+                <div className="space-y-2">
+                  <Label className="text-gray-700 text-sm">
+                    Private Key File <span className="text-red-500">*</span>
+                  </Label>
+                  {privateKeyFile ? (
+                    <div className="relative border rounded-lg p-3 bg-white">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 border rounded bg-amber-100 flex-shrink-0 flex items-center justify-center">
+                          <Key className="h-5 w-5 text-amber-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-700 truncate">
+                            {privateKeyFile.name}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {(privateKeyFile.size / 1024).toFixed(1)} KB - Private Key
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={removePrivateKeyFile}
+                          className="flex-shrink-0 h-8 w-8 text-gray-400 hover:text-red-500"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="flex items-center justify-center gap-3 w-full h-14 border-2 border-dashed border-amber-300 rounded-lg cursor-pointer bg-white hover:bg-amber-50 transition-colors">
+                      <Upload className="h-5 w-5 text-amber-500" />
+                      <div>
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium text-amber-600">Upload private key</span> (.pfx, .p12)
+                        </p>
+                      </div>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pfx,.p12"
+                        onChange={handlePrivateKeyFileChange}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                {/* Private Key Password */}
+                {privateKeyFile && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="privateKeyPassword" className="text-gray-700 text-sm">
+                      Private Key Password <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="privateKeyPassword"
+                      type="password"
+                      value={privateKeyPassword}
+                      onChange={(e) => setPrivateKeyPassword(e.target.value)}
+                      placeholder="Enter private key password"
+                      className="h-9 bg-white"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="space-y-2 pt-3 border-t border-gray-200">
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -564,7 +831,7 @@ export default function UsersPage() {
                 </Label>
               </div>
               {useCustomPassword && (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label htmlFor="password" className="text-gray-700">
                     Password <span className="text-red-500">*</span>
                   </Label>
@@ -577,13 +844,13 @@ export default function UsersPage() {
                     className="h-10"
                   />
                   <p className="text-xs text-gray-500">
-                    Password must be at least 8 characters with uppercase, lowercase, and number.
+                    Min 8 characters with uppercase, lowercase, and number.
                   </p>
                 </div>
               )}
             </div>
           </div>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="flex-shrink-0 gap-2 sm:gap-0 pt-4 border-t">
             <Button
               variant="outline"
               onClick={() => {

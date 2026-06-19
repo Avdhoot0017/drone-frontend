@@ -33,9 +33,8 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
-# Build argument for API URL (can be overridden at build time)
-ARG NEXT_PUBLIC_API_URL=http://localhost:5000/api/v1
-ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+# Production API URL
+ENV NEXT_PUBLIC_API_URL=https://api.schnelldronetech.com/api/v1
 
 # Build the application
 RUN npm run build
