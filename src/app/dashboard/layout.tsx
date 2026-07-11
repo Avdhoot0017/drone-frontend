@@ -51,18 +51,24 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
       <main
         className={cn(
-          'transition-all duration-300 min-h-screen',
+          'transition-all duration-300 flex-1 flex flex-col',
           sidebarCollapsed ? 'ml-[70px]' : 'ml-[260px]'
         )}
       >
-        <div className="p-6">{children}</div>
+        <div className="p-6 flex-1">{children}</div>
+        {/* Footer */}
+        <footer className="py-4 px-6 text-center text-xs text-muted-foreground border-t">
+          <p className="flex items-center justify-center gap-1">
+            <span>©</span> {new Date().getFullYear()} Powered by Schnell Drone Technologies Limited
+          </p>
+        </footer>
       </main>
     </div>
   );

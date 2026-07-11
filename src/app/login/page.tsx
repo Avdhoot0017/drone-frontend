@@ -219,8 +219,8 @@ export default function LoginPage() {
           </div>
 
           {/* Footer */}
-          <p className="mt-6 text-center text-xs text-gray-400">
-            Drone Surveillance Dashboard v1.0
+          <p className="mt-6 text-center text-xs text-gray-400 flex items-center justify-center gap-1">
+            <span>©</span> {new Date().getFullYear()} Powered by Schnell Drone Technologies Limited
           </p>
         </div>
       </div>

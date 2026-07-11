@@ -162,7 +162,7 @@ export const dashboardApi = {
 // Sync APIs
 export const syncApi = {
   runSync: () =>
-    api.post<ApiResponse<SyncResult>>('/sync/run', {}, { timeout: 120000 }),
+    api.post<ApiResponse<SyncResult>>('/sync/run', { cleanupStale: true }, { timeout: 120000 }),
 
   getStatus: () =>
     api.get<ApiResponse<SyncStatus>>('/sync/status'),
@@ -237,6 +237,7 @@ export interface RegionStats {
   name: string;
   totalObservations: number;
   uniqueVessels: number;
+  detectedPenalty: number;
   penaltyImposed: number;
   penaltyRecovered: number;
   pendingCases: number;
@@ -438,6 +439,9 @@ export interface CaseDetail extends CaseListItem {
   longitude: number | null;
   ownerContact1: string | null;
   ownerContact2: string | null;
+  hearingDate: string | null;
+  hearingTime: string | null;
+  depth: string | null;
   disposalReason: string | null;
   disposedAt: string | null;
   internalNotes: string | null;
@@ -588,6 +592,90 @@ export interface PenaltyConfig {
     code: string;
   };
 }
+
+// Reports Types
+export interface ReportFilters {
+  startDate?: string;
+  endDate?: string;
+  enforcementAreaId?: string;
+  year?: number;
+  month?: number;
+}
+
+export interface AnalyticsSummary {
+  totalViolations: number;
+  disposedCases: number;
+  pendingCases: number;
+  penaltyDetected: number;
+  penaltyImposed: number;
+  penaltyRecovered: number;
+}
+
+export interface MonthlyTrendData {
+  month: string;
+  violations: number;
+  disposed: number;
+  pending: number;
+}
+
+export interface ViolationTypeData {
+  name: string;
+  count: number;
+  percentage: number;
+}
+
+export interface PenaltyComparisonData {
+  category: string;
+  detected: number;
+  imposed: number;
+  recovered: number;
+}
+
+export interface CaseStatusData {
+  status: string;
+  count: number;
+  percentage: number;
+}
+
+export interface DistrictComparisonData {
+  district: string;
+  violations: number;
+  recovered: number;
+}
+
+export interface ChartData {
+  monthlyTrends: MonthlyTrendData[];
+  violationTypes: ViolationTypeData[];
+  penaltyComparison: PenaltyComparisonData[];
+  caseStatus: CaseStatusData[];
+}
+
+// Reports APIs
+export const reportsApi = {
+  // Get analytics summary
+  getAnalytics: (params?: ReportFilters) =>
+    api.get<ApiResponse<AnalyticsSummary>>('/reports/analytics', { params }),
+
+  // Get all chart data in one call
+  getChartData: (params?: ReportFilters) =>
+    api.get<ApiResponse<ChartData>>('/reports/charts', { params }),
+
+  // Individual chart endpoints
+  getMonthlyTrends: (params?: ReportFilters) =>
+    api.get<ApiResponse<MonthlyTrendData[]>>('/reports/monthly-trends', { params }),
+
+  getViolationTypes: (params?: ReportFilters) =>
+    api.get<ApiResponse<ViolationTypeData[]>>('/reports/violation-types', { params }),
+
+  getPenaltyComparison: (params?: ReportFilters) =>
+    api.get<ApiResponse<PenaltyComparisonData[]>>('/reports/penalty-comparison', { params }),
+
+  getCaseStatus: (params?: ReportFilters) =>
+    api.get<ApiResponse<CaseStatusData[]>>('/reports/case-status', { params }),
+
+  getDistrictComparison: (params?: ReportFilters) =>
+    api.get<ApiResponse<DistrictComparisonData[]>>('/reports/district-comparison', { params }),
+};
 
 // Case APIs
 export const caseApi = {

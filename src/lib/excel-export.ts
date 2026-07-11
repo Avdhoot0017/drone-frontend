@@ -370,3 +370,310 @@ export async function exportDashboardToExcel(data: ExportData): Promise<void> {
   });
   saveAs(blob, filename);
 }
+
+// ========== REPORTS EXPORT ==========
+
+interface ReportsExportData {
+  analytics: {
+    totalViolations: number;
+    disposedCases: number;
+    pendingCases: number;
+    penaltyDetected: number;
+    penaltyImposed: number;
+    penaltyRecovered: number;
+  } | null;
+  monthlyTrends: { month: string; violations: number; disposed: number; pending: number }[];
+  violationTypes: { name: string; count: number; percentage: number }[];
+  penaltyComparison: { category: string; detected: number; imposed: number; recovered: number }[];
+  caseStatus: { status: string; count: number; percentage: number }[];
+  districtComparison: { district: string; violations: number; recovered: number }[];
+  filterInfo?: {
+    year?: number;
+    month?: string;
+    district?: string;
+  };
+}
+
+/**
+ * Export reports data to Excel
+ */
+export async function exportReportsToExcel(data: ReportsExportData): Promise<void> {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Drone Surveillance Dashboard - Reports';
+  workbook.created = new Date();
+
+  // ========== SUMMARY SHEET ==========
+  const summarySheet = workbook.addWorksheet('Summary', {
+    properties: { tabColor: { argb: 'FFDC2626' } },
+  });
+
+  // Title
+  summarySheet.mergeCells('A1:D1');
+  const titleCell = summarySheet.getCell('A1');
+  titleCell.value = 'Case Reports - Analytics Summary';
+  titleCell.font = { bold: true, size: 16, color: { argb: 'FFDC2626' } };
+  titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  summarySheet.getRow(1).height = 35;
+
+  // Report date
+  summarySheet.mergeCells('A2:D2');
+  const dateCell = summarySheet.getCell('A2');
+  dateCell.value = `Generated on: ${format(new Date(), 'dd MMMM yyyy, hh:mm a')}`;
+  dateCell.font = { italic: true, size: 10, color: { argb: 'FF6B7280' } };
+  dateCell.alignment = { horizontal: 'center' };
+
+  // Filter info
+  if (data.filterInfo?.year || data.filterInfo?.month || data.filterInfo?.district) {
+    summarySheet.mergeCells('A3:D3');
+    const filterCell = summarySheet.getCell('A3');
+    const filters: string[] = [];
+    if (data.filterInfo.year) filters.push(`Year: ${data.filterInfo.year}`);
+    if (data.filterInfo.month) filters.push(`Month: ${data.filterInfo.month}`);
+    if (data.filterInfo.district) filters.push(`District: ${data.filterInfo.district}`);
+    filterCell.value = `Filters: ${filters.join(' | ')}`;
+    filterCell.font = { italic: true, size: 10, color: { argb: 'FF9CA3AF' } };
+    filterCell.alignment = { horizontal: 'center' };
+  }
+
+  // Analytics Section
+  const kpiStartRow = 5;
+  summarySheet.mergeCells(`A${kpiStartRow}:D${kpiStartRow}`);
+  const kpiHeader = summarySheet.getCell(`A${kpiStartRow}`);
+  kpiHeader.value = 'Key Analytics';
+  kpiHeader.font = { bold: true, size: 12 };
+  kpiHeader.fill = SUBHEADER_FILL;
+  summarySheet.getRow(kpiStartRow).height = 25;
+
+  const kpiData = [
+    ['Total Violations', data.analytics?.totalViolations || 0],
+    ['Disposed Cases', data.analytics?.disposedCases || 0],
+    ['Pending Cases', data.analytics?.pendingCases || 0],
+    ['Penalty Detected', formatCurrency(data.analytics?.penaltyDetected || 0)],
+    ['Penalty Imposed', formatCurrency(data.analytics?.penaltyImposed || 0)],
+    ['Penalty Recovered', formatCurrency(data.analytics?.penaltyRecovered || 0)],
+  ];
+
+  kpiData.forEach((row, index) => {
+    const rowNum = kpiStartRow + 1 + index;
+    summarySheet.getCell(`A${rowNum}`).value = row[0];
+    summarySheet.getCell(`B${rowNum}`).value = row[1];
+    summarySheet.getCell(`A${rowNum}`).font = { bold: true };
+    summarySheet.getCell(`B${rowNum}`).alignment = { horizontal: 'right' };
+    styleDataRow(summarySheet.getRow(rowNum));
+  });
+
+  summarySheet.getColumn('A').width = 25;
+  summarySheet.getColumn('B').width = 20;
+
+  // ========== MONTHLY TRENDS SHEET ==========
+  if (data.monthlyTrends.length > 0) {
+    const trendsSheet = workbook.addWorksheet('Monthly Trends', {
+      properties: { tabColor: { argb: 'FF3B82F6' } },
+    });
+
+    trendsSheet.mergeCells('A1:D1');
+    const trendsTitle = trendsSheet.getCell('A1');
+    trendsTitle.value = 'Monthly Trends';
+    trendsTitle.font = { bold: true, size: 14, color: { argb: 'FF3B82F6' } };
+    trendsTitle.alignment = { horizontal: 'center', vertical: 'middle' };
+    trendsSheet.getRow(1).height = 30;
+
+    const trendsHeaders = ['Month', 'Violations', 'Disposed', 'Pending'];
+    const trendsHeaderRow = trendsSheet.getRow(3);
+    trendsHeaders.forEach((header, index) => {
+      trendsHeaderRow.getCell(index + 1).value = header;
+    });
+    styleHeaderRow(trendsHeaderRow);
+
+    data.monthlyTrends.forEach((trend, index) => {
+      const row = trendsSheet.getRow(4 + index);
+      row.getCell(1).value = trend.month;
+      row.getCell(2).value = trend.violations;
+      row.getCell(3).value = trend.disposed;
+      row.getCell(4).value = trend.pending;
+      [2, 3, 4].forEach(col => {
+        row.getCell(col).numFmt = NUMBER_FORMAT;
+        row.getCell(col).alignment = { horizontal: 'right', vertical: 'middle' };
+      });
+      styleDataRow(row);
+    });
+
+    trendsSheet.getColumn(1).width = 12;
+    trendsSheet.getColumn(2).width = 15;
+    trendsSheet.getColumn(3).width = 12;
+    trendsSheet.getColumn(4).width = 12;
+  }
+
+  // ========== PENALTY COMPARISON SHEET ==========
+  if (data.penaltyComparison.length > 0) {
+    const penaltySheet = workbook.addWorksheet('Penalty Comparison', {
+      properties: { tabColor: { argb: 'FF10B981' } },
+    });
+
+    penaltySheet.mergeCells('A1:D1');
+    const penaltyTitle = penaltySheet.getCell('A1');
+    penaltyTitle.value = 'Quarterly Penalty Comparison';
+    penaltyTitle.font = { bold: true, size: 14, color: { argb: 'FF10B981' } };
+    penaltyTitle.alignment = { horizontal: 'center', vertical: 'middle' };
+    penaltySheet.getRow(1).height = 30;
+
+    const penaltyHeaders = ['Quarter', 'Detected', 'Imposed', 'Recovered'];
+    const penaltyHeaderRow = penaltySheet.getRow(3);
+    penaltyHeaders.forEach((header, index) => {
+      penaltyHeaderRow.getCell(index + 1).value = header;
+    });
+    styleHeaderRow(penaltyHeaderRow);
+
+    data.penaltyComparison.forEach((item, index) => {
+      const row = penaltySheet.getRow(4 + index);
+      row.getCell(1).value = item.category;
+      row.getCell(2).value = item.detected;
+      row.getCell(3).value = item.imposed;
+      row.getCell(4).value = item.recovered;
+      [2, 3, 4].forEach(col => {
+        row.getCell(col).numFmt = CURRENCY_FORMAT;
+        row.getCell(col).alignment = { horizontal: 'right', vertical: 'middle' };
+      });
+      styleDataRow(row);
+    });
+
+    penaltySheet.getColumn(1).width = 12;
+    penaltySheet.getColumn(2).width = 18;
+    penaltySheet.getColumn(3).width = 18;
+    penaltySheet.getColumn(4).width = 18;
+  }
+
+  // ========== CASE STATUS SHEET ==========
+  if (data.caseStatus.length > 0) {
+    const statusSheet = workbook.addWorksheet('Case Status', {
+      properties: { tabColor: { argb: 'FFF59E0B' } },
+    });
+
+    statusSheet.mergeCells('A1:C1');
+    const statusTitle = statusSheet.getCell('A1');
+    statusTitle.value = 'Case Status Distribution';
+    statusTitle.font = { bold: true, size: 14, color: { argb: 'FFF59E0B' } };
+    statusTitle.alignment = { horizontal: 'center', vertical: 'middle' };
+    statusSheet.getRow(1).height = 30;
+
+    const statusHeaders = ['Status', 'Count', 'Percentage'];
+    const statusHeaderRow = statusSheet.getRow(3);
+    statusHeaders.forEach((header, index) => {
+      statusHeaderRow.getCell(index + 1).value = header;
+    });
+    styleHeaderRow(statusHeaderRow);
+
+    data.caseStatus.forEach((item, index) => {
+      const row = statusSheet.getRow(4 + index);
+      row.getCell(1).value = item.status;
+      row.getCell(2).value = item.count;
+      row.getCell(3).value = item.percentage / 100;
+      row.getCell(2).numFmt = NUMBER_FORMAT;
+      row.getCell(3).numFmt = PERCENT_FORMAT;
+      row.getCell(2).alignment = { horizontal: 'right', vertical: 'middle' };
+      row.getCell(3).alignment = { horizontal: 'right', vertical: 'middle' };
+      styleDataRow(row);
+    });
+
+    statusSheet.getColumn(1).width = 20;
+    statusSheet.getColumn(2).width = 12;
+    statusSheet.getColumn(3).width = 12;
+  }
+
+  // ========== VIOLATION TYPES SHEET ==========
+  if (data.violationTypes.length > 0) {
+    const violationSheet = workbook.addWorksheet('Violation Types', {
+      properties: { tabColor: { argb: 'FF8B5CF6' } },
+    });
+
+    violationSheet.mergeCells('A1:C1');
+    const violationTitle = violationSheet.getCell('A1');
+    violationTitle.value = 'Violation Types Distribution';
+    violationTitle.font = { bold: true, size: 14, color: { argb: 'FF8B5CF6' } };
+    violationTitle.alignment = { horizontal: 'center', vertical: 'middle' };
+    violationSheet.getRow(1).height = 30;
+
+    const violationHeaders = ['Violation Type', 'Count', 'Percentage'];
+    const violationHeaderRow = violationSheet.getRow(3);
+    violationHeaders.forEach((header, index) => {
+      violationHeaderRow.getCell(index + 1).value = header;
+    });
+    styleHeaderRow(violationHeaderRow);
+
+    data.violationTypes.forEach((item, index) => {
+      const row = violationSheet.getRow(4 + index);
+      row.getCell(1).value = item.name;
+      row.getCell(2).value = item.count;
+      row.getCell(3).value = item.percentage / 100;
+      row.getCell(2).numFmt = NUMBER_FORMAT;
+      row.getCell(3).numFmt = PERCENT_FORMAT;
+      row.getCell(2).alignment = { horizontal: 'right', vertical: 'middle' };
+      row.getCell(3).alignment = { horizontal: 'right', vertical: 'middle' };
+      styleDataRow(row);
+    });
+
+    violationSheet.getColumn(1).width = 35;
+    violationSheet.getColumn(2).width = 12;
+    violationSheet.getColumn(3).width = 12;
+  }
+
+  // ========== DISTRICT COMPARISON SHEET ==========
+  if (data.districtComparison.length > 0) {
+    const districtSheet = workbook.addWorksheet('District Comparison', {
+      properties: { tabColor: { argb: 'FFEC4899' } },
+    });
+
+    districtSheet.mergeCells('A1:C1');
+    const districtTitle = districtSheet.getCell('A1');
+    districtTitle.value = 'District-wise Comparison';
+    districtTitle.font = { bold: true, size: 14, color: { argb: 'FFEC4899' } };
+    districtTitle.alignment = { horizontal: 'center', vertical: 'middle' };
+    districtSheet.getRow(1).height = 30;
+
+    const districtHeaders = ['District', 'Violations', 'Recovered'];
+    const districtHeaderRow = districtSheet.getRow(3);
+    districtHeaders.forEach((header, index) => {
+      districtHeaderRow.getCell(index + 1).value = header;
+    });
+    styleHeaderRow(districtHeaderRow);
+
+    data.districtComparison.forEach((item, index) => {
+      const row = districtSheet.getRow(4 + index);
+      row.getCell(1).value = item.district;
+      row.getCell(2).value = item.violations;
+      row.getCell(3).value = item.recovered;
+      row.getCell(2).numFmt = NUMBER_FORMAT;
+      row.getCell(3).numFmt = CURRENCY_FORMAT;
+      row.getCell(2).alignment = { horizontal: 'right', vertical: 'middle' };
+      row.getCell(3).alignment = { horizontal: 'right', vertical: 'middle' };
+      styleDataRow(row);
+    });
+
+    // Totals
+    const totalRow = districtSheet.getRow(4 + data.districtComparison.length);
+    totalRow.getCell(1).value = 'TOTAL';
+    totalRow.getCell(2).value = data.districtComparison.reduce((sum, d) => sum + d.violations, 0);
+    totalRow.getCell(3).value = data.districtComparison.reduce((sum, d) => sum + d.recovered, 0);
+    totalRow.eachCell((cell) => {
+      cell.font = { bold: true };
+      cell.fill = SUBHEADER_FILL;
+      cell.border = BORDER_STYLE;
+    });
+    totalRow.getCell(2).numFmt = NUMBER_FORMAT;
+    totalRow.getCell(3).numFmt = CURRENCY_FORMAT;
+
+    districtSheet.getColumn(1).width = 25;
+    districtSheet.getColumn(2).width = 15;
+    districtSheet.getColumn(3).width = 18;
+  }
+
+  // Generate filename
+  const filename = `Case_Reports_${format(new Date(), 'yyyy-MM-dd_HHmm')}.xlsx`;
+
+  // Generate and save
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  });
+  saveAs(blob, filename);
+}

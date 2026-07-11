@@ -44,6 +44,9 @@ import { toast } from 'sonner';
 import { CasePreviewDialog } from '@/components/case/CasePreviewDialog';
 
 interface FormData {
+  // Case number (auto-generated but editable)
+  caseNumber: string;
+
   // Vessel info
   vesselId: string | null;
   originalVesselName: string;
@@ -54,6 +57,9 @@ interface FormData {
   ownerEmail: string;
   ownerContact1: string;
   ownerContact2: string;
+  ownerAddress: string;
+  ownerTaluka: string;
+  ownerDistrict: string;
 
   // Location
   districtId: string;
@@ -65,7 +71,15 @@ interface FormData {
   violationTypeId: string;
   fishingLicenseTypeId: string;
   observationDate: string;
+  hearingDate: string;
+  hearingTime: string;
   description: string;
+
+  // Trawling specific
+  depth: string; // Depth in fathoms (वाव) - only for trawling violations
+
+  // Act/Section (कलम)
+  actKalam: string;
 
   // Images
   images: File[];
@@ -89,8 +103,18 @@ export default function NewCasePage() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Generate default case number
+  const generateDefaultCaseNumber = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const random = Math.floor(Math.random() * 99999).toString().padStart(5, '0');
+    return `MH/FISH/${year}/${month}/${random}/${year}`;
+  };
+
   // Form data
   const [formData, setFormData] = useState<FormData>({
+    caseNumber: generateDefaultCaseNumber(),
     vesselId: null,
     originalVesselName: '',
     originalVesselReg: '',
@@ -98,6 +122,9 @@ export default function NewCasePage() {
     ownerEmail: '',
     ownerContact1: '',
     ownerContact2: '',
+    ownerAddress: '',
+    ownerTaluka: '',
+    ownerDistrict: '',
     districtId: '',
     flyingLocationId: '',
     latitude: '',
@@ -105,7 +132,11 @@ export default function NewCasePage() {
     violationTypeId: '',
     fishingLicenseTypeId: '',
     observationDate: new Date().toISOString().split('T')[0],
+    hearingDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 days from now
+    hearingTime: '11:00',
     description: '',
+    depth: '',
+    actKalam: '',
     images: [],
   });
 
@@ -162,9 +193,13 @@ export default function NewCasePage() {
     const licenseType = licenseTypes.find((l) => l.id === formData.fishingLicenseTypeId);
 
     return {
+      caseNumber: formData.caseNumber,
       vesselName: formData.originalVesselName,
       registrationNumber: formData.originalVesselReg,
       ownerName: formData.ownerName,
+      ownerAddress: formData.ownerAddress,
+      ownerTaluka: formData.ownerTaluka,
+      ownerDistrict: formData.ownerDistrict,
       districtName: district?.name || '',
       flyingLocationName: flyingLocation?.name || '',
       latitude: formData.latitude,
@@ -172,6 +207,10 @@ export default function NewCasePage() {
       violationTypeName: violationType?.name || '',
       fishingLicenseTypeName: licenseType?.name || '',
       observationDate: formData.observationDate,
+      depth: formData.depth,
+      actKalam: formData.actKalam,
+      hearingDate: formData.hearingDate,
+      hearingTime: formData.hearingTime,
       processingFee: editablePenalty.processingFee,
       violationPenalty: editablePenalty.violationPenalty,
       totalPenalty: editablePenalty.processingFee + editablePenalty.violationPenalty,
@@ -477,6 +516,7 @@ export default function NewCasePage() {
 
       // Create case
       const caseData = {
+        caseNumber: formData.caseNumber,
         vesselId: formData.vesselId,
         vesselName: formData.originalVesselName,
         registrationNumber: formData.originalVesselReg,
@@ -484,13 +524,20 @@ export default function NewCasePage() {
         ownerEmail: formData.ownerEmail || undefined,
         ownerContact1: formData.ownerContact1,
         ownerContact2: formData.ownerContact2 || undefined,
+        ownerAddress: formData.ownerAddress || undefined,
+        ownerTaluka: formData.ownerTaluka || undefined,
+        ownerDistrict: formData.ownerDistrict || undefined,
         enforcementAreaId: formData.districtId,
         flyingLocationId: formData.flyingLocationId,
         latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
         longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
         violationTypeId: formData.violationTypeId,
         fishingLicenseTypeId: formData.fishingLicenseTypeId || undefined,
+        depth: formData.depth || undefined,
+        actKalam: formData.actKalam || undefined,
         observationDate: formData.observationDate,
+        hearingDate: formData.hearingDate,
+        hearingTime: formData.hearingTime,
         description: formData.description || undefined,
         evidenceUrls: evidenceUrls.length > 0 ? evidenceUrls : undefined,
         // Penalty details
@@ -524,7 +571,16 @@ export default function NewCasePage() {
       }
     } catch (err: unknown) {
       console.error('Error creating case:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to create case';
+      // Extract error message from axios error response or Error object
+      let errorMessage = 'Failed to create case';
+      if (err && typeof err === 'object') {
+        const axiosError = err as { response?: { data?: { error?: string } }; message?: string };
+        if (axiosError.response?.data?.error) {
+          errorMessage = axiosError.response.data.error;
+        } else if (axiosError.message) {
+          errorMessage = axiosError.message;
+        }
+      }
       toast.error(errorMessage);
     } finally {
       setSubmitting(false);
@@ -591,24 +647,28 @@ export default function NewCasePage() {
                     />
                     {/* Suggestions dropdown */}
                     {showNameSuggestions && vesselSuggestions.length > 0 && (
-                      <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-md shadow-md max-h-60 overflow-auto">
+                      <div
+                        className="absolute z-50 w-full mt-1 border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto"
+                        style={{ backgroundColor: '#ffffff' }}
+                      >
                         {searchingVessels && (
-                          <div className="flex items-center justify-center p-3 bg-white dark:bg-zinc-900">
-                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                            <span className="text-sm text-muted-foreground">Searching...</span>
+                          <div className="flex items-center justify-center p-3" style={{ backgroundColor: '#ffffff' }}>
+                            <Loader2 className="h-4 w-4 animate-spin mr-2 text-gray-600" />
+                            <span className="text-sm text-gray-600">Searching...</span>
                           </div>
                         )}
                         {vesselSuggestions.map((vessel) => (
                           <div
                             key={vessel.id}
-                            className="px-3 py-2 cursor-pointer bg-white dark:bg-zinc-900 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors border-b border-gray-100 dark:border-zinc-800 last:border-b-0"
+                            className="px-3 py-2 cursor-pointer hover:bg-gray-100 transition-colors border-b border-gray-200 last:border-b-0"
+                            style={{ backgroundColor: '#ffffff' }}
                             onMouseDown={(e) => {
                               e.preventDefault();
                               handleSelectVessel(vessel);
                             }}
                           >
-                            <div className="font-medium text-sm text-gray-900 dark:text-gray-100">{vessel.name}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                            <div className="font-medium text-sm" style={{ color: '#111827' }}>{vessel.name}</div>
+                            <div className="text-xs" style={{ color: '#6b7280' }}>
                               {vessel.registrationNumber}
                               {vessel.ownerName && ` • ${vessel.ownerName}`}
                             </div>
@@ -636,24 +696,28 @@ export default function NewCasePage() {
                     />
                     {/* Suggestions dropdown */}
                     {showRegSuggestions && vesselSuggestions.length > 0 && (
-                      <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-md shadow-md max-h-60 overflow-auto">
+                      <div
+                        className="absolute z-50 w-full mt-1 border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto"
+                        style={{ backgroundColor: '#ffffff' }}
+                      >
                         {searchingVessels && (
-                          <div className="flex items-center justify-center p-3 bg-white dark:bg-zinc-900">
-                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                            <span className="text-sm text-muted-foreground">Searching...</span>
+                          <div className="flex items-center justify-center p-3" style={{ backgroundColor: '#ffffff' }}>
+                            <Loader2 className="h-4 w-4 animate-spin mr-2 text-gray-600" />
+                            <span className="text-sm text-gray-600">Searching...</span>
                           </div>
                         )}
                         {vesselSuggestions.map((vessel) => (
                           <div
                             key={vessel.id}
-                            className="px-3 py-2 cursor-pointer bg-white dark:bg-zinc-900 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors border-b border-gray-100 dark:border-zinc-800 last:border-b-0"
+                            className="px-3 py-2 cursor-pointer hover:bg-gray-100 transition-colors border-b border-gray-200 last:border-b-0"
+                            style={{ backgroundColor: '#ffffff' }}
                             onMouseDown={(e) => {
                               e.preventDefault();
                               handleSelectVessel(vessel);
                             }}
                           >
-                            <div className="font-medium text-sm text-gray-900 dark:text-gray-100">{vessel.registrationNumber}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                            <div className="font-medium text-sm" style={{ color: '#111827' }}>{vessel.registrationNumber}</div>
+                            <div className="text-xs" style={{ color: '#6b7280' }}>
                               {vessel.name}
                               {vessel.ownerName && ` • ${vessel.ownerName}`}
                             </div>
@@ -754,6 +818,45 @@ export default function NewCasePage() {
                         className="pl-9"
                       />
                     </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Address Fields */}
+                <div className="space-y-2">
+                  <Label htmlFor="ownerAddress">Address Line 1</Label>
+                  <Input
+                    id="ownerAddress"
+                    value={formData.ownerAddress}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, ownerAddress: e.target.value }))
+                    }
+                    placeholder="Enter address"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="ownerTaluka">Taluka</Label>
+                    <Input
+                      id="ownerTaluka"
+                      value={formData.ownerTaluka}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, ownerTaluka: e.target.value }))
+                      }
+                      placeholder="Enter taluka"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ownerDistrict">District</Label>
+                    <Input
+                      id="ownerDistrict"
+                      value={formData.ownerDistrict}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, ownerDistrict: e.target.value }))
+                      }
+                      placeholder="Enter district"
+                    />
                   </div>
                 </div>
               </CardContent>
@@ -876,6 +979,26 @@ export default function NewCasePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Case Number - Editable */}
+                <div className="space-y-2">
+                  <Label htmlFor="caseNumber">Case Number (केस क्र.)</Label>
+                  <Input
+                    id="caseNumber"
+                    type="text"
+                    value={formData.caseNumber}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, caseNumber: e.target.value }))
+                    }
+                    placeholder="MH/FISH/2026/06/XXXXX/2026"
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Auto-generated case number. You can edit if needed.
+                  </p>
+                </div>
+
+                <Separator />
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="violationType">Violation Type *</Label>
@@ -918,6 +1041,44 @@ export default function NewCasePage() {
                     </Select>
                   </div>
                 </div>
+
+                {/* Depth field - only shown for trawling violations */}
+                {violationTypes.find((v) => v.id === formData.violationTypeId)?.name?.toLowerCase().includes('trawl') && (
+                  <div className="space-y-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <Label htmlFor="depth" className="text-blue-700">Depth (वाव/Fathoms) - Trawling Specific</Label>
+                    <Input
+                      id="depth"
+                      type="text"
+                      value={formData.depth}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, depth: e.target.value }))
+                      }
+                      placeholder="e.g., 5, 10, 5-10"
+                      className="bg-white"
+                    />
+                    <p className="text-xs text-blue-600">
+                      Enter the depth in fathoms (वाव) where the trawling was observed.
+                    </p>
+                  </div>
+                )}
+
+                {/* Act/Section (कलम) */}
+                <div className="space-y-2">
+                  <Label htmlFor="actKalam">Act / Section (कलम)</Label>
+                  <Input
+                    id="actKalam"
+                    type="text"
+                    value={formData.actKalam}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, actKalam: e.target.value }))
+                    }
+                    placeholder="e.g., Maharashtra Marine Fishing Regulation Act, 1981 - Section 7"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter the act and section under which the violation occurred.
+                  </p>
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="observationDate">Observation Date *</Label>
                   <Input
@@ -926,6 +1087,30 @@ export default function NewCasePage() {
                     value={formData.observationDate}
                     onChange={(e) =>
                       setFormData((prev) => ({ ...prev, observationDate: e.target.value }))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="hearingDate">Hearing Date *</Label>
+                  <Input
+                    id="hearingDate"
+                    type="date"
+                    value={formData.hearingDate}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, hearingDate: e.target.value }))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="hearingTime">Hearing Time *</Label>
+                  <Input
+                    id="hearingTime"
+                    type="time"
+                    value={formData.hearingTime}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, hearingTime: e.target.value }))
                     }
                     required
                   />

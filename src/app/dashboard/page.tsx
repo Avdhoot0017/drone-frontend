@@ -497,7 +497,7 @@ function CommissionerDashboard({
 }: {
   stats: { totalObservations: number; uniqueVessels: number; detectedPenalty: number; penaltyImposed: number; penaltyRecovered: number; todayObservations: number; pendingActions?: number } | undefined;
   statsLoading: boolean;
-  regions: { id: string; name: string; totalObservations: number; uniqueVessels: number; pendingCases: number; penaltyImposed: number; penaltyRecovered: number }[] | undefined;
+  regions: { id: string; name: string; totalObservations: number; uniqueVessels: number; pendingCases: number; detectedPenalty: number; penaltyImposed: number; penaltyRecovered: number }[] | undefined;
   regionsLoading: boolean;
   violations: { name: string; count: number; percentage: number }[] | undefined;
   violationsLoading: boolean;
@@ -531,6 +531,7 @@ function CommissionerDashboard({
     vessels: r.uniqueVessels,
     pending: r.pendingCases,
     disposed: r.totalObservations - r.pendingCases,
+    detectedPenalty: r.detectedPenalty,
     penaltyImposed: r.penaltyImposed,
     penaltyRecovered: r.penaltyRecovered,
     recoveryRate: r.penaltyImposed > 0 ? Math.round((r.penaltyRecovered / r.penaltyImposed) * 100) : 0,
@@ -1070,7 +1071,7 @@ function OperatorAcfDashboard({
   user: { role: string; name?: string; enforcementArea?: { id: string; name: string } | null } | null;
   stats: { totalObservations: number; uniqueVessels: number; detectedPenalty: number; penaltyImposed: number; penaltyRecovered: number; todayObservations: number; pendingActions?: number } | undefined;
   statsLoading: boolean;
-  regions: { id: string; name: string; totalObservations: number; uniqueVessels: number; pendingCases: number; penaltyImposed: number; penaltyRecovered: number }[] | undefined;
+  regions: { id: string; name: string; totalObservations: number; uniqueVessels: number; pendingCases: number; detectedPenalty: number; penaltyImposed: number; penaltyRecovered: number }[] | undefined;
   regionsLoading: boolean;
   violations: { name: string; count: number; percentage: number }[] | undefined;
   violationsLoading: boolean;
@@ -1590,6 +1591,7 @@ export default function DashboardPage() {
     observations: r.totalObservations,
     vessels: r.uniqueVessels,
     pending: r.pendingCases,
+    detectedPenalty: r.detectedPenalty,
     penaltyImposed: r.penaltyImposed,
     penaltyRecovered: r.penaltyRecovered,
     fill: COLORS.districts[r.name] || COLORS.violations[i % COLORS.violations.length],
@@ -2466,6 +2468,187 @@ export default function DashboardPage() {
                   pending={district.pending}
                   vessels={district.vessels}
                 />
+              );
+            })
+          )}
+        </div>
+      </section>
+
+      <Separator />
+
+      {/* ============ PENALTY DETECTED - DISTRICT WISE ============ */}
+      <section>
+        <SectionHeader
+          icon={IndianRupee}
+          title="Distribution of Penalties Detected"
+          // description="District-wise penalty detected from drone surveillance"
+        />
+
+        {/* Total Penalty Detected Card */}
+        {!regionsLoading && (
+          <Card className="mb-5 border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-white shadow-lg">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-4 h-4 rounded-full bg-blue-600" />
+                <span className="text-lg font-bold text-gray-800">Total Penalty Detected - All Districts</span>
+                <Badge className="bg-blue-100 text-blue-700 border-0">{formatCurrencyFull(stats?.detectedPenalty || 0)}</Badge>
+              </div>
+              <div className="flex flex-col lg:flex-row items-center gap-8">
+                {/* Pie Chart for Penalty Detected by District */}
+                <div className="relative w-48 h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={districtData.filter(d => d.detectedPenalty > 0).map(d => ({
+                          name: d.name,
+                          value: d.detectedPenalty,
+                          fill: d.fill,
+                        }))}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={55}
+                        outerRadius={85}
+                        paddingAngle={2}
+                        dataKey="value"
+                      >
+                        {districtData.filter(d => d.detectedPenalty > 0).map((entry, index) => (
+                          <Cell key={`cell-penalty-${index}`} fill={entry.fill} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value) => [formatCurrencyFull(Number(value))]}
+                        contentStyle={{
+                          fontSize: '12px',
+                          borderRadius: '8px',
+                          backgroundColor: 'hsl(var(--popover))',
+                          border: '1px solid hsl(var(--border))',
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <p className="text-xs font-bold text-gray-800">{formatCurrencyFull(stats?.detectedPenalty || 0)}</p>
+                      <p className="text-[10px] text-muted-foreground">Total</p>
+                    </div>
+                  </div>
+                </div>
+                {/* District-wise breakdown */}
+                <div className="flex-1 grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {districtData.map((d) => (
+                    <div key={d.name} className="bg-white rounded-xl p-3 border shadow-sm text-center">
+                      <div className="flex items-center justify-center gap-1.5 mb-1">
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.fill }} />
+                        <p className="text-xs font-medium text-gray-600">{d.name}</p>
+                      </div>
+                      <p className="text-sm font-bold text-blue-600">{formatCurrencyFull(d.detectedPenalty)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* District Wise Penalty Detected Cards */}
+        <SectionHeader
+          icon={MapPin}
+          title="District Wise Penalty"
+          description="Penalty for each coastal district"
+        />
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {regionsLoading ? (
+            Array(5).fill(0).map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-6">
+                  <Skeleton className="h-5 w-24 mb-3" />
+                  <Skeleton className="h-32 w-full" />
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            districtData.map((district) => {
+              const penaltyPercentage = (stats?.detectedPenalty || 0) > 0
+                ? Math.round((district.detectedPenalty / (stats?.detectedPenalty || 1)) * 100)
+                : 0;
+
+              return (
+                <Card key={district.name} className="hover:shadow-md transition-shadow">
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: district.fill }} />
+                        <span className="font-semibold text-gray-800">{district.name}</span>
+                      </div>
+                      <Badge variant="outline" className="text-blue-600 border-blue-200">
+                        {penaltyPercentage}% of total
+                      </Badge>
+                    </div>
+
+                    {/* Stats Summary Row */}
+                    <div className="flex items-center gap-4 mb-3 text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                        <span className="text-muted-foreground">Detected:</span>
+                        <span className="font-semibold">{formatCurrencyFull(district.detectedPenalty)}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-purple-500" />
+                        <span className="text-muted-foreground">Imposed:</span>
+                        <span className="font-semibold">{formatCurrencyFull(district.penaltyImposed)}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-green-500" />
+                        <span className="text-muted-foreground">Recovered:</span>
+                        <span className="font-semibold">{formatCurrencyFull(district.penaltyRecovered)}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 ml-auto">
+                        <span className="text-muted-foreground">Cases:</span>
+                        <span className="font-semibold text-amber-600">{district.observations}</span>
+                      </div>
+                    </div>
+
+                    {/* Vertical Bar Chart */}
+                    <div className="h-40">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={[
+                            { name: 'Detected', value: district.detectedPenalty, fill: '#3b82f6' },
+                            { name: 'Imposed', value: district.penaltyImposed, fill: '#8b5cf6' },
+                            { name: 'Recovered', value: district.penaltyRecovered, fill: '#22c55e' },
+                          ]}
+                          margin={{ top: 10, right: 10, left: 10, bottom: 5 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                          <XAxis
+                            dataKey="name"
+                            axisLine={{ stroke: '#d1d5db' }}
+                            tickLine={false}
+                            tick={{ fontSize: 11, fill: '#374151' }}
+                          />
+                          <YAxis
+                            axisLine={{ stroke: '#d1d5db' }}
+                            tickLine={false}
+                            tick={{ fontSize: 9, fill: '#6b7280' }}
+                            tickFormatter={(value) => `₹${value.toLocaleString('en-IN')}`}
+                            width={80}
+                          />
+                          <Tooltip
+                            formatter={(value) => [formatCurrencyFull(Number(value)), 'Amount']}
+                            contentStyle={{ fontSize: '12px', borderRadius: '6px', border: '1px solid #e5e7eb' }}
+                            cursor={{ fill: 'rgba(0,0,0,0.05)' }}
+                          />
+                          <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={50}>
+                            <Cell fill="#3b82f6" />
+                            <Cell fill="#8b5cf6" />
+                            <Cell fill="#22c55e" />
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
               );
             })
           )}
