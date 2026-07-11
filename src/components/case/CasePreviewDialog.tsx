@@ -17,7 +17,13 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2, Check, Printer } from 'lucide-react';
 
+// National Emblem of India - Use image from public folder
+const NATIONAL_EMBLEM_SRC = '/images/national-emblem.png';
+
 interface CasePreviewData {
+  // Case number
+  caseNumber?: string;
+
   // Vessel info
   vesselName: string;
   registrationNumber: string;
@@ -25,6 +31,9 @@ interface CasePreviewData {
 
   // Owner info
   ownerName: string;
+  ownerAddress?: string;
+  ownerTaluka?: string;
+  ownerDistrict?: string;
 
   // Location
   districtName: string;
@@ -36,6 +45,16 @@ interface CasePreviewData {
   violationTypeName: string;
   fishingLicenseTypeName: string;
   observationDate: string;
+
+  // Trawling specific
+  depth?: string;
+
+  // Act/Section
+  actKalam?: string;
+
+  // Hearing
+  hearingDate?: string;
+  hearingTime?: string;
 
   // Penalty
   processingFee: number;
@@ -67,9 +86,11 @@ export function CasePreviewDialog({
     ? format(new Date(data.observationDate), 'dd/MM/yyyy')
     : currentDate;
 
-  // Hearing date is 7 days from now
-  const hearingDate = format(addDays(new Date(), 7), 'dd/MM/yyyy');
-  const hearingTime = '11:00';
+  // Use provided hearing date/time or fallback to 7 days from now
+  const hearingDate = data.hearingDate
+    ? format(new Date(data.hearingDate), 'dd/MM/yyyy')
+    : format(addDays(new Date(), 7), 'dd/MM/yyyy');
+  const hearingTime = data.hearingTime || '11:00';
 
   // Format penalty in lakhs
   const formatInLakhs = (amount: number) => {
@@ -77,8 +98,8 @@ export function CasePreviewDialog({
     return lakhs.toFixed(2);
   };
 
-  // Generate case number
-  const caseNumber = `XXXXX`;
+  // Use case number from data or fallback to XXXXX
+  const caseNumber = data.caseNumber || 'XXXXX';
 
   const handlePrint = () => {
     window.print();
@@ -119,7 +140,7 @@ export function CasePreviewDialog({
 
               {/* Case Number and Date */}
               <div className="flex justify-between mb-6">
-                <p>केस क्र. <span className="font-semibold">{caseNumber}</span>/2026</p>
+                <p>केस क्र. <span className="font-semibold">{caseNumber}</span></p>
                 <p>दिनांक- <span className="font-semibold">{currentDate}</span></p>
               </div>
 
@@ -158,7 +179,8 @@ export function CasePreviewDialog({
                   क्रमांक <span className="font-semibold underline">{data.registrationNumber || '___________'}</span> ही
                   रेखांश <span className="font-semibold underline">{data.longitude || '___________'}</span>,
                   अक्षांश <span className="font-semibold underline">{data.latitude || '___________'}</span> या ठिकाणी
-                  अनधिकृतरित्या पर्ससीन/एलईडी/ट्रॉलिंग/इतर पध्दतीने मासेमारी करित असल्याचे निदर्शनास आलेली आहे.
+                  {data.depth && <><span className="font-semibold underline"> {data.depth} </span> इतक्या वावात</>}
+                  {' '}अनधिकृतरित्या <span className="font-semibold">{data.violationTypeName || 'पर्ससीन/एलईडी/ट्रॉलिंग/इतर'}</span> पध्दतीने मासेमारी करित असल्याचे निदर्शनास आलेली आहे.
                 </p>
               </div>
 
@@ -192,14 +214,16 @@ export function CasePreviewDialog({
                       <td className="border border-gray-400 p-2">परवानाच्या अटी व शर्तिंचे उल्लंघन</td>
                       <td className="border border-gray-400 p-2 text-center">कलम 17 (३) (फ)</td>
                       <td className="border border-gray-400 p-2 text-center font-semibold">
-                        रू. {formatInLakhs(data.totalPenalty)} लक्ष
+                        रू. {formatInLakhs(data.processingFee)} लक्ष
                       </td>
                     </tr>
                     <tr style={{ backgroundColor: '#ffffff' }}>
                       <td className="border border-gray-400 p-2 text-center">2</td>
-                      <td className="border border-gray-400 p-2"></td>
-                      <td className="border border-gray-400 p-2"></td>
-                      <td className="border border-gray-400 p-2"></td>
+                      <td className="border border-gray-400 p-2">{data.violationTypeName || ''}</td>
+                      <td className="border border-gray-400 p-2 text-center">{data.actKalam || ''}</td>
+                      <td className="border border-gray-400 p-2 text-center font-semibold">
+                        रू. {formatInLakhs(data.violationPenalty)} लक्ष
+                      </td>
                     </tr>
                     <tr className="font-bold" style={{ backgroundColor: '#f9fafb' }}>
                       <td className="border border-gray-400 p-2" colSpan={2}></td>
@@ -223,6 +247,10 @@ export function CasePreviewDialog({
 
               {/* Signature - First Page */}
               <div className="mb-8 text-right">
+                <div className="mb-1">
+                  <p className="text-blue-700 text-sm m-0">🔒 Digitally Signed by: <span className="font-semibold">Authorized Signatory</span></p>
+                  <p className="text-green-600 text-xs m-0">✓ Valid Certificate | {currentDate}</p>
+                </div>
                 <p className="font-semibold">फिर्यादी तथा अंमलबजावणी अधिकारी</p>
                 <p>सहाय्यक मत्स्यव्यवसाय विकास अधिकारी (परवाना अधिकारी)</p>
               </div>
@@ -234,41 +262,67 @@ export function CasePreviewDialog({
 
               {/* Page Break - Hearing Notice */}
               <div className="border-t-2 border-black pt-6 mt-8">
-                {/* Government Header */}
-                <div className="text-center mb-4">
-                  <p className="font-bold">महाराष्ट्र शासन</p>
-                  <p className="font-bold">मत्स्यव्यवसाय विभाग</p>
-                </div>
-
-                <div className="flex justify-between mb-4">
-                  <p>अभिनिर्णय अधिकारी तथा सहाय्यक मत्स्यव्यवसाय जि.(<span className="font-semibold">{data.districtName || '___'}</span>)</p>
-                  <div className="text-right">
-                    <p>केस क्र. <span className="font-semibold">{caseNumber}</span>/2026</p>
-                    <p>दि. <span className="font-semibold">{currentDate}</span></p>
-                  </div>
-                </div>
+                {/* Government Header Box with Emblem, Case Number, Date and Officer Text */}
+                <table className="w-full mb-4 border border-black" style={{ borderCollapse: 'collapse' }}>
+                  <tbody>
+                    <tr>
+                      <td className="text-center p-4 border border-black">
+                        <img
+                          src={NATIONAL_EMBLEM_SRC}
+                          alt="National Emblem"
+                          className="mx-auto mb-2"
+                          style={{
+                            width: '60px',
+                            height: 'auto'
+                          }}
+                        />
+                        <p className="font-bold text-lg m-0">महाराष्ट्र शासन</p>
+                        <p className="font-bold m-0">मत्स्यव्यवसाय विभाग</p>
+                        <p className="mt-2 m-0">अभिनिर्णय अधिकारी तथा सहाय्यक मत्स्यव्यवसाय जि.(<span className="font-semibold">{data.districtName || '___'}</span>)</p>
+                        <div className="flex justify-between mt-2 px-5">
+                          <span>केस क्र. <span className="font-semibold">{caseNumber}</span></span>
+                          <span>दि. <span className="font-semibold">{currentDate}</span></span>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
 
                 <div className="text-center mb-6">
                   <h3 className="text-lg font-bold underline">सुनावणी ची नोटिस</h3>
                 </div>
 
-                {/* Parties in Hearing Notice */}
-                <div className="mb-4">
-                  <p>महाराष्ट्र शासनातर्फे फिर्यादी सहाय्यक आयुक्त मत्स्यव्यवसाय विकास अधिकारी</p>
-                  <p>(अंमलबजावणी अधिकारी), तथा परवाना अधिकारी <span className="font-semibold">{data.flyingLocationName || '___________'}</span></p>
-                  <p className="text-right font-semibold">फीर्यादी</p>
-                </div>
+                {/* Parties Table - फीर्यादी */}
+                <table className="w-full mb-4 border border-gray-400" style={{ borderCollapse: 'collapse' }}>
+                  <tbody>
+                    <tr>
+                      <td className="border border-gray-400 p-3 text-center align-middle" style={{ width: '80%' }}>
+                        <p className="m-0">महाराष्ट्र शासनातर्फे फिर्यादी सहाय्यक आयुक्त मत्स्यव्यवसाय विकास अधिकारी</p>
+                        <p className="m-0">(अंमलबजावणी अधिकारी), तथा परवाना अधिकारी <span className="font-semibold">{data.flyingLocationName || '___________'}</span></p>
+                      </td>
+                      <td className="border border-gray-400 p-3 text-center align-middle" style={{ width: '20%' }}>
+                        <p className="m-0 font-semibold">फीर्यादी</p>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
 
                 <div className="text-center font-bold my-4">विरूध्द</div>
 
-                <div className="mb-4">
-                  <p>नाव: <span className="font-semibold underline">{data.ownerName || '_______________'}</span>,
-                     रा._______________ता.<span className="font-semibold">{data.flyingLocationName || '___'}</span>
-                     जि.<span className="font-semibold">{data.districtName || '___'}</span></p>
-                  <p>नौकेचे नाव : <span className="font-semibold underline">{data.vesselName || '_______________'}</span>,
-                     नौका क्र.<span className="font-semibold underline">{data.registrationNumber || '_______________'}</span></p>
-                  <p className="text-right font-semibold">सामनेवाला</p>
-                </div>
+                {/* Parties Table - सामनेवाला */}
+                <table className="w-full mb-4 border border-gray-400" style={{ borderCollapse: 'collapse' }}>
+                  <tbody>
+                    <tr>
+                      <td className="border border-gray-400 p-3 text-center align-middle" style={{ width: '80%' }}>
+                        <p className="m-0">नाव: <span className="font-semibold underline">{data.ownerName || '_______________'}</span>, रा. <span className="font-semibold underline">{data.ownerAddress || '_______________'}</span> ता. <span className="font-semibold">{data.ownerTaluka || data.flyingLocationName || '___'}</span> जि. <span className="font-semibold">{data.ownerDistrict || data.districtName || '___'}</span></p>
+                        <p className="m-0">नौकेचे नाव : <span className="font-semibold underline">{data.vesselName || '_______________'}</span>, नौका क्र. <span className="font-semibold underline">{data.registrationNumber || '_______________'}</span></p>
+                      </td>
+                      <td className="border border-gray-400 p-3 text-center align-middle" style={{ width: '20%' }}>
+                        <p className="m-0 font-semibold">सामनेवाला</p>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
 
                 {/* Notice Under Act */}
                 <div className="mb-6 p-3 border border-gray-300 rounded" style={{ backgroundColor: '#f9fafb' }}>
@@ -296,17 +350,23 @@ export function CasePreviewDialog({
                   </p>
                 </div>
 
-                {/* Place and Date */}
-                <div className="mb-6">
-                  <p>ठिकाण - <span className="font-semibold">{data.districtName || '___________'}</span></p>
-                  <p>दिनांक - <span className="font-semibold">{currentDate}</span></p>
-                </div>
-
-                {/* Final Signature */}
-                <div className="text-right mt-8">
-                  <p className="font-semibold">(अभिनिर्णय अधिकारी)</p>
-                  <p>अभिनिर्णय अधिकारी तथा</p>
-                  <p>सहाय्यक आयुक्त मत्स्यव्यवसाय (तां.)</p>
+                {/* Place and Date with Signature Section 2 - अभिनिर्णय अधिकारी */}
+                <div className="flex justify-between items-start mt-4">
+                  <div>
+                    <p className="m-0">ठिकाण - <span className="font-semibold">{data.districtName || '___________'}</span></p>
+                    <p className="m-0">दिनांक - <span className="font-semibold">{currentDate}</span></p>
+                  </div>
+                  <div className="text-center">
+                    {/* Digital Signature Box */}
+                    <div className="border border-blue-700 rounded-md p-2 bg-blue-50 mb-2 text-xs">
+                      <p className="text-blue-700 font-bold text-[8pt] m-0">🔒 Digital Signature</p>
+                      <p className="font-semibold text-[8pt] m-0 mt-1">Authorized Signatory</p>
+                      <p className="text-green-600 text-[7pt] m-0">✓ Valid Certificate</p>
+                    </div>
+                    <p className="font-semibold m-0">(अभिनिर्णय अधिकारी)</p>
+                    <p className="m-0">अभिनिर्णय अधिकारी तथा</p>
+                    <p className="m-0">सहाय्यक आयुक्त मत्स्यव्यवसाय (तां.)</p>
+                  </div>
                 </div>
               </div>
             </div>

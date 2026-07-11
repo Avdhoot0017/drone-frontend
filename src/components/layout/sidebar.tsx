@@ -18,6 +18,7 @@ import {
   FileText,
   Plus,
   ClipboardList,
+  BarChart3,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -47,6 +48,7 @@ const navItems: NavItem[] = [
   { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { title: 'Cases', href: '/dashboard/cases', icon: ClipboardList, roles: ['admin', 'operator', 'acf', 'commissioner'] },
   { title: 'New Case', href: '/dashboard/cases/new', icon: Plus, roles: ['admin', 'operator'] },
+  { title: 'Reports', href: '/dashboard/reports', icon: BarChart3, roles: ['admin', 'member'] },
   { title: 'Users', href: '/dashboard/users', icon: Users, roles: ['admin'] },
   { title: 'Sync Status', href: '/dashboard/sync', icon: RefreshCw },
   { title: 'Settings', href: '/dashboard/settings', icon: Settings },

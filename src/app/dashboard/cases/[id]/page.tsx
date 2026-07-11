@@ -26,6 +26,7 @@ import {
   Download,
   Eye,
   ExternalLink,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -70,7 +71,18 @@ export default function CaseDetailPage() {
   const [paidAmount, setPaidAmount] = useState<string>('');
   const [disposing, setDisposing] = useState(false);
 
+  // Edit dialog (Admin only)
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editData, setEditData] = useState({
+    caseNumber: '',
+    hearingDate: '',
+    hearingTime: '',
+    depth: '',
+  });
+  const [saving, setSaving] = useState(false);
 
+  // Check if user is admin
+  const isAdmin = user?.role === 'admin';
 
   // Fetch case data
   useEffect(() => {
@@ -130,6 +142,44 @@ export default function CaseDetailPage() {
     }
   };
 
+  // Handle opening edit dialog - populate form with current data
+  const handleOpenEditDialog = () => {
+    if (caseData) {
+      setEditData({
+        caseNumber: caseData.caseNumber || '',
+        hearingDate: caseData.hearingDate ? caseData.hearingDate.split('T')[0] : '',
+        hearingTime: caseData.hearingTime || '',
+        depth: caseData.depth || '',
+      });
+      setEditDialogOpen(true);
+    }
+  };
+
+  // Handle save edit
+  const handleSaveEdit = async () => {
+    try {
+      setSaving(true);
+      await caseApi.updateCase(caseId, {
+        caseNumber: editData.caseNumber || undefined,
+        hearingDate: editData.hearingDate || undefined,
+        hearingTime: editData.hearingTime || undefined,
+        depth: editData.depth || undefined,
+      } as any);
+      toast.success('Case details updated successfully.');
+      setEditDialogOpen(false);
+      // Refresh case data
+      const response = await caseApi.getCaseById(caseId);
+      if (response.data.success && response.data.data) {
+        setCaseData(response.data.data);
+      }
+    } catch (err: unknown) {
+      console.error('Error updating case:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update case';
+      toast.error(errorMessage);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const getStatusBadge = (status: CaseStatus) => {
     const statusConfig: Record<CaseStatus, { label: string; className: string; icon: React.ReactNode }> = {
@@ -291,6 +341,83 @@ export default function CaseDetailPage() {
               </DialogContent>
             </Dialog>
           )}
+
+          {/* Edit Button - Admin Only */}
+          {isAdmin && (
+            <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" onClick={handleOpenEditDialog}>
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Edit Details
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[500px]" style={{ backgroundColor: '#ffffff' }}>
+                <DialogHeader style={{ backgroundColor: '#ffffff' }}>
+                  <DialogTitle>Edit Case Details</DialogTitle>
+                  <DialogDescription>
+                    Update case number, hearing date/time, and depth (for trawling).
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4" style={{ backgroundColor: '#ffffff' }}>
+                  <div className="space-y-2">
+                    <Label htmlFor="editCaseNumber">Case Number (केस क्र.)</Label>
+                    <Input
+                      id="editCaseNumber"
+                      value={editData.caseNumber}
+                      onChange={(e) => setEditData(prev => ({ ...prev, caseNumber: e.target.value }))}
+                      placeholder="MH/FISH/2026/06/XXXXX/2026"
+                      className="font-mono"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="editHearingDate">Hearing Date</Label>
+                      <Input
+                        id="editHearingDate"
+                        type="date"
+                        value={editData.hearingDate}
+                        onChange={(e) => setEditData(prev => ({ ...prev, hearingDate: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="editHearingTime">Hearing Time</Label>
+                      <Input
+                        id="editHearingTime"
+                        type="time"
+                        value={editData.hearingTime}
+                        onChange={(e) => setEditData(prev => ({ ...prev, hearingTime: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="editDepth">Depth (वाव/Fathoms) - Trawling Only</Label>
+                    <Input
+                      id="editDepth"
+                      value={editData.depth}
+                      onChange={(e) => setEditData(prev => ({ ...prev, depth: e.target.value }))}
+                      placeholder="e.g., 5, 10, 5-10"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Only applicable for trawling violations.
+                    </p>
+                  </div>
+                </div>
+                <DialogFooter style={{ backgroundColor: '#ffffff' }}>
+                  <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleSaveEdit} disabled={saving}>
+                    {saving ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                    )}
+                    Save Changes
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
       </div>
 
@@ -415,6 +542,14 @@ export default function CaseDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {/* Case Number - Prominent Display */}
+              {caseData.caseNumber && (
+                <div className="mb-4 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                  <p className="text-sm text-muted-foreground">Case Number (केस क्र.)</p>
+                  <p className="font-bold text-lg font-mono">{caseData.caseNumber}</p>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Violation Type</p>
@@ -432,6 +567,24 @@ export default function CaseDetailPage() {
                     {format(new Date(caseData.observationDate), 'dd MMM yyyy')}
                   </p>
                 </div>
+                {caseData.hearingDate && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Hearing Date</p>
+                    <p className="font-medium flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      {format(new Date(caseData.hearingDate), 'dd MMM yyyy')}
+                    </p>
+                  </div>
+                )}
+                {caseData.hearingTime && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Hearing Time</p>
+                    <p className="font-medium flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      {caseData.hearingTime}
+                    </p>
+                  </div>
+                )}
                 {caseData.fishingLicenseType && (
                   <div>
                     <p className="text-sm text-muted-foreground">Fishing License Type</p>
@@ -444,6 +597,13 @@ export default function CaseDetailPage() {
                     Rs. {caseData.penaltyAmount?.toLocaleString('en-IN') || '0'}
                   </p>
                 </div>
+                {/* Depth - Only for trawling violations */}
+                {caseData.depth && (
+                  <div className="col-span-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <p className="text-sm text-blue-600">Depth (वाव/Fathoms)</p>
+                    <p className="font-bold text-blue-700">{caseData.depth} वाव</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

@@ -10,6 +10,7 @@ import { format } from 'date-fns';
 
 interface ExportOptions {
   title?: string;
+  subtitle?: string;
   filename?: string;
   orientation?: 'portrait' | 'landscape';
 }
@@ -58,6 +59,7 @@ export async function exportElementToPdf(
 ): Promise<void> {
   const {
     title = 'Dashboard Report',
+    subtitle,
     filename = `Dashboard_Report_${format(new Date(), 'yyyy-MM-dd_HHmm')}.pdf`,
     orientation = 'landscape',
   } = options;
@@ -67,7 +69,7 @@ export async function exportElementToPdf(
   const pageHeight = orientation === 'portrait' ? 297 : 210; // A4 height in mm
   const margin = 10;
   const contentWidth = pageWidth - (margin * 2);
-  const headerHeight = 25;
+  const headerHeight = subtitle ? 32 : 25; // Increased if subtitle present
   const footerHeight = 10;
   const usableHeight = pageHeight - headerHeight - footerHeight;
 
@@ -108,9 +110,19 @@ export async function exportElementToPdf(
     pdf.setTextColor(220, 38, 38);
     pdf.text(title, pageWidth / 2, 12, { align: 'center' });
 
-    pdf.setFontSize(9);
-    pdf.setTextColor(107, 114, 128);
-    pdf.text(`Generated on: ${format(new Date(), 'dd MMMM yyyy, hh:mm a')}`, pageWidth / 2, 18, { align: 'center' });
+    if (subtitle) {
+      pdf.setFontSize(11);
+      pdf.setTextColor(55, 65, 81);
+      pdf.text(subtitle, pageWidth / 2, 19, { align: 'center' });
+
+      pdf.setFontSize(9);
+      pdf.setTextColor(107, 114, 128);
+      pdf.text(`Generated on: ${format(new Date(), 'dd MMMM yyyy, hh:mm a')}`, pageWidth / 2, 26, { align: 'center' });
+    } else {
+      pdf.setFontSize(9);
+      pdf.setTextColor(107, 114, 128);
+      pdf.text(`Generated on: ${format(new Date(), 'dd MMMM yyyy, hh:mm a')}`, pageWidth / 2, 18, { align: 'center' });
+    }
   };
 
   addHeader(currentPage);
